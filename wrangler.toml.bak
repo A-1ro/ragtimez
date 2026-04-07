@@ -6,10 +6,8 @@ compatibility_flags = ["nodejs_compat"]
 # Workers AI binding – used for LLM / embedding calls from Pages Functions
 [ai]
 binding = "AI"
-remote = true
 
 # Cloudflare AI Search binding – enables querying the crawl index from Workers
 [[ai_search]]
 binding = "AI_SEARCH"
 instance_name = "ai-tech-daily-search"
-remote = true

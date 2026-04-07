@@ -189,6 +189,81 @@ The biggest risk: before annotators gather, it's just "an AI-only article site."
 
 ---
 
+## 9. Development Setup
+
+### Cloudflare AI Search
+
+Cloudflare AI Search crawls the target sites and exposes a RAG-ready search index that Workers can query through the `AI_SEARCH` binding (see `wrangler.toml`).
+
+#### Step 1 – Create the AI Search index
+
+1. Open the [Cloudflare Dashboard](https://dash.cloudflare.com/) → **AI** → **AI Search**.
+2. Click **Create index** and name it `ai-tech-daily-search`.
+3. Note your **Account ID** from the dashboard sidebar.
+
+#### Step 2 – Register crawl targets
+
+Crawl targets are defined in [`src/constants/crawlTargets.ts`](src/constants/crawlTargets.ts).  
+Run the setup script once to register all 10 sites with the AI Search index:
+
+```bash
+export CLOUDFLARE_ACCOUNT_ID="<your-account-id>"
+export CLOUDFLARE_API_TOKEN="<token-with-AI-Search-write-permission>"
+
+npm run setup:ai-search
+```
+
+The script calls `POST /accounts/{id}/ai-search/indexes/ai-tech-daily-search/sources` for each target and prints a success/failure summary.  
+You can verify registrations in the Dashboard under **AI > AI Search > Sources**.
+
+#### Step 3 – Bind AI Search to the Pages project
+
+In the [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Pages** → your Pages project → **Settings** → **Bindings**, add:
+
+| Type | Variable name | Index |
+|------|--------------|-------|
+| AI Search | `AI_SEARCH` | `ai-tech-daily-search` |
+| Workers AI | `AI` | *(auto)* |
+
+These bindings are already declared in `wrangler.toml` for local development (`wrangler pages dev`).
+
+#### Step 4 – Verify with the search API
+
+Once the index has crawled at least one source, test it:
+
+```bash
+# Local dev (wrangler pages dev)
+curl "http://localhost:8788/api/search?q=Azure+OpenAI+latest&limit=5"
+
+# Production
+curl "https://<your-pages-domain>/api/search?q=Azure+OpenAI+latest&limit=5"
+```
+
+Expected response shape:
+
+```json
+{
+  "results": [
+    {
+      "url": "https://azure.microsoft.com/en-us/blog/...",
+      "title": "...",
+      "snippet": "...",
+      "score": 0.92
+    }
+  ]
+}
+```
+
+### Local development
+
+```bash
+npm install
+npm run dev          # Astro dev server (no Workers bindings)
+npm run pages:dev    # Wrangler Pages dev (includes Workers bindings)
+```
+
+---
+
 ## Author
 
 **Eiichiro Iriguchi** -- Freelance backend engineer specializing in Azure infrastructure and LLM application development.

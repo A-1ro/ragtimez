@@ -7,7 +7,8 @@
     "build": "astro build",
     "preview": "astro preview",
     "pages:dev": "wrangler pages dev",
-    "astro": "astro"
+    "astro": "astro",
+    "setup:ai-search": "npx tsx scripts/setup-ai-search.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.7",
