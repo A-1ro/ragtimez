@@ -1,0 +1,31 @@
+# Build output
+dist/
+.output/
+
+# Dependencies
+node_modules/
+
+# Astro
+.astro/
+
+# Wrangler
+.wrangler/
+.dev.vars
+
+# Environment
+.env
+.env.*
+!.env.example
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Editor
+.vscode/
+.idea/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?

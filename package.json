@@ -1,0 +1,20 @@
+{
+  "name": "ai-tech-daily",
+  "type": "module",
+  "version": "0.0.1",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "astro build",
+    "preview": "astro preview",
+    "pages:dev": "wrangler pages dev",
+    "astro": "astro"
+  },
+  "dependencies": {
+    "@astrojs/cloudflare": "^13.1.7",
+    "astro": "^6.1.4"
+  },
+  "devDependencies": {
+    "typescript": "^6.0.2",
+    "wrangler": "^4.80.0"
+  }
+}
