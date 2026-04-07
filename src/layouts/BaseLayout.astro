@@ -2,10 +2,20 @@
 interface Props {
   title: string;
   description?: string;
+  ogImage?: string;
+  ogType?: string;
+  canonicalUrl?: string;
 }
 
-const { title, description = "AI-powered daily tech blog covering Azure / LLM / RAG / AI Agents" } =
-  Astro.props;
+const {
+  title,
+  description = "AI-powered daily tech blog covering Azure / LLM / RAG / AI Agents",
+  ogImage = "/og-default.png",
+  ogType = "website",
+  canonicalUrl = Astro.url.href,
+} = Astro.props;
+
+const siteName = "AI Tech Daily";
 ---
 
 <!doctype html>
@@ -14,7 +24,115 @@ const { title, description = "AI-powered daily tech blog covering Azure / LLM / 
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+
+    <!-- OGP -->
+    <meta property="og:type" content={ogType} />
+    <meta property="og:site_name" content={siteName} />
+    <meta property="og:title" content={title} />
+    <meta property="og:description" content={description} />
+    <meta property="og:image" content={new URL(ogImage, Astro.site ?? Astro.url.origin).href} />
+    <meta property="og:url" content={canonicalUrl} />
+
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content={title} />
+    <meta name="twitter:description" content={description} />
+    <meta name="twitter:image" content={new URL(ogImage, Astro.site ?? Astro.url.origin).href} />
+
+    <link rel="canonical" href={canonicalUrl} />
     <title>{title}</title>
+
+    <style>
+      *, *::before, *::after {
+        box-sizing: border-box;
+      }
+
+      :root {
+        --color-bg: #0f1117;
+        --color-surface: #1a1d27;
+        --color-border: #2a2d3a;
+        --color-text: #e2e8f0;
+        --color-muted: #8892a4;
+        --color-accent: #60a5fa;
+        --color-accent-hover: #93c5fd;
+        --trust-official: #22c55e;
+        --trust-blog: #f59e0b;
+        --trust-speculative: #ef4444;
+        --max-width: 900px;
+        --spacing: 1.5rem;
+      }
+
+      html, body {
+        margin: 0;
+        padding: 0;
+        background: var(--color-bg);
+        color: var(--color-text);
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", sans-serif;
+        line-height: 1.7;
+        font-size: 16px;
+      }
+
+      a {
+        color: var(--color-accent);
+        text-decoration: none;
+      }
+      a:hover {
+        color: var(--color-accent-hover);
+        text-decoration: underline;
+      }
+
+      header {
+        border-bottom: 1px solid var(--color-border);
+        background: var(--color-surface);
+        position: sticky;
+        top: 0;
+        z-index: 100;
+      }
+
+      header nav {
+        max-width: var(--max-width);
+        margin: 0 auto;
+        padding: 0.75rem var(--spacing);
+        display: flex;
+        align-items: center;
+        gap: 1rem;
+      }
+
+      header nav a {
+        font-weight: 700;
+        font-size: 1.1rem;
+        color: var(--color-text);
+        letter-spacing: -0.02em;
+      }
+      header nav a:hover {
+        color: var(--color-accent-hover);
+        text-decoration: none;
+      }
+
+      main {
+        max-width: var(--max-width);
+        margin: 0 auto;
+        padding: var(--spacing);
+      }
+
+      footer {
+        border-top: 1px solid var(--color-border);
+        text-align: center;
+        padding: 1.5rem var(--spacing);
+        color: var(--color-muted);
+        font-size: 0.875rem;
+        margin-top: 4rem;
+      }
+
+      @media (max-width: 600px) {
+        :root {
+          --spacing: 1rem;
+        }
+        html, body {
+          font-size: 15px;
+        }
+      }
+    </style>
   </head>
   <body>
     <header>
