@@ -1,48 +1,31 @@
 /// <reference types="astro/client" />
+/// <reference types="@cloudflare/workers-types" />
 
 /**
  * Cloudflare Workers / Pages runtime bindings.
  *
- * These types mirror the bindings declared in wrangler.toml so that
- * `Astro.locals.runtime.env` is fully type-checked in .astro files and
- * Cloudflare Pages Functions.
+ * Augmenting `Cloudflare.Env` (from @cloudflare/workers-types) so that
+ * `import { env } from "cloudflare:workers"` is fully type-checked throughout
+ * the codebase.  The binding names must match wrangler.toml exactly.
+ *
+ * Types for AI and AiSearchInstance come from @cloudflare/workers-types.
  */
-
-interface AiSearchResult {
-  /** The crawled page URL */
-  url: string;
-  /** Snippet of text most relevant to the query */
-  snippet: string;
-  /** Relevance score (0–1) returned by the AI Search index */
-  score: number;
-  /** Page title, if available */
-  title?: string;
+declare namespace Cloudflare {
+  interface Env {
+    /** Cloudflare Workers AI binding (LLM / embedding inference) */
+    AI: Ai;
+    /** Cloudflare AI Search binding (crawl-index queries) */
+    AI_SEARCH: AiSearchInstance;
+    /**
+     * Internal API token used to authenticate calls to /api/search.
+     * Set this as a secret in the Cloudflare Pages project settings:
+     *   wrangler pages secret put INTERNAL_API_TOKEN
+     */
+    INTERNAL_API_TOKEN: string;
+  }
 }
 
-interface AiSearchResponse {
-  results: AiSearchResult[];
-}
-
-interface AiSearch {
-  /**
-   * Search the crawl index using natural-language or keyword queries.
-   * @param query  Natural-language search string
-   * @param opts   Optional parameters (e.g. maximum number of results)
-   */
-  search(
-    query: string,
-    opts?: { limit?: number }
-  ): Promise<AiSearchResponse>;
-}
-
-type Runtime = import("@astrojs/cloudflare").Runtime<Env>;
-
-interface Env {
-  /** Cloudflare Workers AI binding (LLM / embedding inference) */
-  AI: Ai;
-  /** Cloudflare AI Search binding (crawl-index queries) */
-  AI_SEARCH: AiSearch;
-}
+type Runtime = import("@astrojs/cloudflare").Runtime;
 
 declare namespace App {
   interface Locals extends Runtime {}

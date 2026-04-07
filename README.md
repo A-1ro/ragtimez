@@ -227,28 +227,41 @@ In the [Cloudflare Dashboard](https://dash.cloudflare.com/) → **Workers & Page
 
 These bindings are already declared in `wrangler.toml` for local development (`wrangler pages dev`).
 
-#### Step 4 – Verify with the search API
+#### Step 4 – Set the internal API token secret
+
+`/api/search` requires a `Authorization: Bearer <token>` header to prevent public misuse (Cloudflare AI Search calls are metered).
+
+```bash
+# Set the secret in your Pages project (replace with a strong random value)
+wrangler pages secret put INTERNAL_API_TOKEN
+```
+
+#### Step 5 – Verify with the search API
 
 Once the index has crawled at least one source, test it:
 
 ```bash
 # Local dev (wrangler pages dev)
-curl "http://localhost:8788/api/search?q=Azure+OpenAI+latest&limit=5"
+curl -H "Authorization: Bearer <your-token>" \
+  "http://localhost:8788/api/search?q=Azure+OpenAI+latest&limit=5"
 
 # Production
-curl "https://<your-pages-domain>/api/search?q=Azure+OpenAI+latest&limit=5"
+curl -H "Authorization: Bearer <your-token>" \
+  "https://<your-pages-domain>/api/search?q=Azure+OpenAI+latest&limit=5"
 ```
 
 Expected response shape:
 
 ```json
 {
-  "results": [
+  "search_query": "Azure OpenAI latest",
+  "chunks": [
     {
-      "url": "https://azure.microsoft.com/en-us/blog/...",
-      "title": "...",
-      "snippet": "...",
-      "score": 0.92
+      "id": "...",
+      "type": "text",
+      "score": 0.92,
+      "text": "...",
+      "item": { "key": "https://azure.microsoft.com/en-us/blog/..." }
     }
   ]
 }

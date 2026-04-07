@@ -8,13 +8,16 @@
     "preview": "astro preview",
     "pages:dev": "wrangler pages dev",
     "astro": "astro",
-    "setup:ai-search": "npx tsx scripts/setup-ai-search.ts"
+    "setup:ai-search": "tsx scripts/setup-ai-search.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.7",
     "astro": "^6.1.4"
   },
   "devDependencies": {
+    "@cloudflare/workers-types": "^4.20260405.1",
+    "@types/node": "^25.5.2",
+    "tsx": "^4.21.0",
     "typescript": "^6.0.2",
     "wrangler": "^4.80.0"
   }

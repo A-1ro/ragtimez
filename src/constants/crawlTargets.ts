@@ -6,6 +6,13 @@
  * each site so that Workers can query the content through the AI_SEARCH binding.
  */
 
+/**
+ * AI Search index / instance name.
+ * Must match the `instance_name` in `wrangler.toml` and the index created in
+ * the Cloudflare Dashboard (AI > AI Search).
+ */
+export const AI_SEARCH_INDEX_NAME = "ai-tech-daily-search";
+
 export interface CrawlTarget {
   /** Human-readable label shown in the UI / logs */
   label: string;
