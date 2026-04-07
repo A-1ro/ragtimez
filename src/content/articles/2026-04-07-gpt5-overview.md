@@ -1,13 +1,13 @@
 ---
-title: "GPT-5 Overview: What We Know So Far"
+title: "GPT-5 概要：現時点でわかっていること"
 date: 2026-04-07
-summary: "A summary of GPT-5 capabilities, benchmark results, and what it means for developers building LLM-powered applications."
+summary: "GPT-5の能力・ベンチマーク結果と、LLMアプリケーション開発者への影響をまとめた記事。"
 sources:
   - url: "https://openai.com/blog/gpt-5"
-    title: "Introducing GPT-5 – OpenAI"
+    title: "GPT-5 発表 – OpenAI"
     type: "official"
   - url: "https://techcrunch.com/2026/04/07/gpt5-analysis"
-    title: "GPT-5 Analysis – TechCrunch"
+    title: "GPT-5 分析 – TechCrunch"
     type: "blog"
 trustLevel: "official"
 tags:
@@ -18,23 +18,24 @@ tags:
 draft: false
 ---
 
-## What Is GPT-5?
+## GPT-5 とは？
 
-GPT-5 is OpenAI's latest large language model, announced in April 2026.
-According to [official release notes](https://openai.com/blog/gpt-5), it demonstrates significant improvements in reasoning, coding, and multimodal understanding compared to its predecessor.
+GPT-5 は OpenAI が 2026年4月に発表した最新の大規模言語モデルです。
+[公式リリースノート](https://openai.com/blog/gpt-5)によると、推論・コーディング・マルチモーダル理解の各分野で GPT-4o を大幅に上回る性能を示しています。
 
-## Key Capabilities
+## 主な特徴
 
-- **Enhanced reasoning** — GPT-5 scores higher on multi-step math and logic benchmarks than GPT-4o.
-- **Multimodal input** — Accepts text, images, audio, and video as input.
-- **Longer context window** — Supports up to 256k tokens, enabling processing of large documents in a single call.
-- **Reduced hallucinations** — Improved grounding mechanisms lower factual error rates on standard benchmarks.
+- **推論能力の向上** — 多段階の数学・論理ベンチマークで GPT-4o を超えるスコアを達成。
+- **マルチモーダル入力** — テキスト・画像・音声・動画を入力として受け付ける。
+- **長いコンテキストウィンドウ** — 最大 256k トークンをサポートし、大規模ドキュメントを1回のリクエストで処理可能。
+- **幻覚（ハルシネーション）の低減** — グラウンディング機構の改善により、標準ベンチマークでの事実誤りが減少。
 
-## What This Means for Developers
+## 開発者への影響
 
-LLM-powered applications built on earlier GPT models can leverage GPT-5's improved reasoning to reduce prompt-engineering overhead.
-RAG pipelines benefit from the larger context window, which reduces chunking complexity for long documents.
+GPT-4 系モデルで構築した LLM アプリケーションは、GPT-5 の向上した推論能力を活用することでプロンプトエンジニアリングのコストを削減できます。
+また、長いコンテキストウィンドウにより、RAG パイプラインでの文書チャンク分割の複雑さが軽減されます。
 
-## Trust Note
+## 信頼度について
 
-This article is based on official OpenAI documentation and corroborating blog coverage. Benchmark figures reflect results published by OpenAI.
+この記事は OpenAI の公式ドキュメントおよびブログ記事を参照しています。
+ベンチマーク数値は OpenAI が公開した結果に基づいています。
