@@ -1,0 +1,76 @@
+name: Daily Article Generation
+
+on:
+  schedule:
+    # 毎朝 6:00 JST (21:00 UTC)
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Article date in YYYY-MM-DD format (e.g. 2026-04-08). Defaults to today JST."
+        required: false
+        type: string
+      force:
+        description: "Overwrite existing article if present"
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  group: daily-article
+  cancel-in-progress: false
+
+jobs:
+  generate-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate article
+        env:
+          GENERATE_ARTICLE_URL: ${{ secrets.GENERATE_ARTICLE_URL }}
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
+          ARTICLE_DATE: ${{ inputs.date }}
+          FORCE_FLAG: ${{ inputs.force }}
+        run: |
+          EXTRA_ARGS=()
+          if [ -n "$ARTICLE_DATE" ]; then
+            EXTRA_ARGS+=(--date "$ARTICLE_DATE")
+          fi
+          # FORCE_FLAG is empty on scheduled runs (inputs.force is unset); treated as false intentionally
+          if [ "$FORCE_FLAG" = "true" ]; then
+            EXTRA_ARGS+=(--force)
+          fi
+          BEFORE=$(ls src/content/articles/ 2>/dev/null | sort)
+          npm run generate:article -- ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+          AFTER=$(ls src/content/articles/ 2>/dev/null | sort)
+          if [ "$BEFORE" = "$AFTER" ]; then
+            echo "No new article files generated. Exiting."
+            exit 1
+          fi
+
+      - name: Commit and push generated article
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/content/articles/
+          if git diff --cached --quiet; then
+            echo "No new article to commit."
+            exit 1
+          else
+            git commit -m "chore: add daily article $(TZ=Asia/Tokyo date +%Y-%m-%d)"
+            git push origin HEAD
+          fi
