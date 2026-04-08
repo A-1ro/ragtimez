@@ -46,10 +46,16 @@ jobs:
           if [ -n "$ARTICLE_DATE" ]; then
             EXTRA_ARGS+=(--date "$ARTICLE_DATE")
           fi
+          # FORCE_FLAG is empty on scheduled runs (inputs.force is unset); treated as false intentionally
           if [ "$FORCE_FLAG" = "true" ]; then
             EXTRA_ARGS+=(--force)
           fi
           npm run generate:article -- ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+          # Verify at least one article file was produced before proceeding to commit
+          if [ -z "$(ls src/content/articles/ 2>/dev/null)" ]; then
+            echo "No article files found after generation. Exiting."
+            exit 1
+          fi
 
       - name: Commit and push generated article
         run: |
