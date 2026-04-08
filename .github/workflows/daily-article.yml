@@ -2,12 +2,12 @@ name: Daily Article Generation
 
 on:
   schedule:
-    # 毎朝 6:00 JST (21:00 UTC 前日)
+    # 毎朝 6:00 JST (21:00 UTC)
     - cron: "0 21 * * *"
   workflow_dispatch:
     inputs:
       date:
-        description: "Article date (YYYY-MM-DD). Defaults to today UTC."
+        description: "Article date in YYYY-MM-DD format (e.g. 2026-04-08). Defaults to today JST."
         required: false
         type: string
       force:
@@ -59,6 +59,6 @@ jobs:
           if git diff --cached --quiet; then
             echo "No new article to commit."
           else
-            git commit -m "chore: add daily article $(date -u +%Y-%m-%d)"
-            git push
+            git commit -m "chore: add daily article $(TZ=Asia/Tokyo date +%Y-%m-%d)"
+            git push origin HEAD
           fi
