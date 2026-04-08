@@ -124,6 +124,17 @@ export const GET: APIRoute = async ({ request }) => {
     });
   }
 
+  // NOTE: tokenData.access_token must not be used below this point.
+  // It is scoped only to the user-profile fetch above.
+
+  // Validate the avatar URL to ensure it comes from GitHub's CDN and cannot
+  // carry a javascript: URI or point to an attacker-controlled host.
+  if (
+    !userData.avatar_url.startsWith("https://avatars.githubusercontent.com/")
+  ) {
+    return new Response("Unexpected avatar URL format", { status: 502 });
+  }
+
   // Create a server-side session and issue a cookie.
   const sessionId = await createSession(env.AUTH_KV, {
     login: userData.login,
@@ -135,6 +146,8 @@ export const GET: APIRoute = async ({ request }) => {
   return new Response(null, {
     status: 302,
     headers: {
+      // Redirect to the home page unconditionally.  A dynamic `returnTo`
+      // parameter is intentionally avoided to prevent open-redirect attacks.
       Location: "/",
       "Set-Cookie": buildSessionCookie(sessionId, isSecure),
     },

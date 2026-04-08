@@ -25,6 +25,8 @@ export const POST: APIRoute = async ({ request }) => {
   return new Response(null, {
     status: 302,
     headers: {
+      // Redirect to the home page unconditionally.  A dynamic `returnTo`
+      // parameter is intentionally avoided to prevent open-redirect attacks.
       Location: "/",
       "Set-Cookie": buildClearCookie(isSecure),
     },

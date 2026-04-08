@@ -12,8 +12,14 @@ export const SESSION_COOKIE = "session_id";
 /** Session lifetime in seconds (7 days). */
 export const SESSION_TTL = 7 * 24 * 60 * 60;
 
-/** OAuth state lifetime in seconds (10 minutes). */
-export const OAUTH_STATE_TTL = 10 * 60;
+/** OAuth state lifetime in seconds (60 seconds).
+ *
+ * NOTE: KV's `get → delete` sequence is NOT atomic.  Two concurrent callbacks
+ * with the same `state` could both pass validation in a narrow time window.
+ * The short TTL (60 s) minimises the race window.  A fully atomic solution
+ * would require Durable Objects transactions.
+ */
+export const OAUTH_STATE_TTL = 60;
 
 /** Data stored in a session. */
 export interface UserSession {
@@ -139,6 +145,11 @@ export async function saveOAuthState(
 /**
  * Verify that an OAuth state token exists and delete it (one-time use).
  * Returns `true` when the state is valid, `false` otherwise.
+ *
+ * NOTE: KV `get` + `delete` is not atomic.  Two concurrent requests carrying
+ * the same `state` value could both succeed within the narrow window between
+ * the two KV operations.  The short `OAUTH_STATE_TTL` (60 s) limits exposure.
+ * A fully atomic implementation would require Durable Objects.
  */
 export async function consumeOAuthState(
   kv: KVNamespace,

@@ -42,15 +42,9 @@ declare namespace Cloudflare {
 
 type Runtime = import("@astrojs/cloudflare").Runtime;
 
-/** Authenticated GitHub user stored in the session. */
-interface SessionUser {
-  login: string;
-  avatarUrl: string;
-}
-
 declare namespace App {
   interface Locals extends Runtime {
     /** Populated by middleware when a valid session cookie is present. */
-    user?: SessionUser;
+    user?: import("./lib/session").UserSession;
   }
 }
