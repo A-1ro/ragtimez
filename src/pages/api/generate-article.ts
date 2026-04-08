@@ -1,26 +1,22 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
+import { timingSafeEqual } from "../../lib/auth";
+
+// ---------------------------------------------------------------------------
+// Constants
+// ---------------------------------------------------------------------------
+
+/**
+ * Maximum number of chunks passed to the LLM context window.
+ * Llama 3.3 70B has a 128k-token context, but typical chunk text is
+ * ~200–400 tokens each, so 20 × 400 ≈ 8 000 tokens, which leaves ample room
+ * for the system prompt (~500 tokens) and the 2 048-token output budget.
+ */
+const MAX_CONTEXT_CHUNKS = 20;
 
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Constant-time string comparison to prevent timing attacks when validating
- * secret tokens.  Iterates through all bytes of both strings regardless of
- * where the first mismatch occurs.
- */
-function timingSafeEqual(a: string, b: string): boolean {
-  const enc = new TextEncoder();
-  const aBytes = enc.encode(a);
-  const bBytes = enc.encode(b);
-  const maxLen = Math.max(aBytes.length, bBytes.length);
-  let result = aBytes.length ^ bBytes.length;
-  for (let i = 0; i < maxLen; i++) {
-    result |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  }
-  return result === 0;
-}
 
 /**
  * Domains that are considered "official" sources.
@@ -85,8 +81,9 @@ function deriveTrustLevel(
 ): "official" | "blog" | "speculative" {
   if (sources.length === 0) return "speculative";
   if (sources.some((s) => s.type === "official")) return "official";
-  // Remaining: all sources are "blog" or "other" (community / unclassified).
-  return "blog";
+  if (sources.some((s) => s.type === "blog")) return "blog";
+  // All sources are "other" (unclassified domains) – treat as speculative.
+  return "speculative";
 }
 
 // ---------------------------------------------------------------------------
@@ -161,13 +158,10 @@ function extractSources(chunks: SearchChunk[]): ArticleSource[] {
 /**
  * Convert chunks into a condensed context block for the LLM.
  * Each entry includes the source URL and the relevant text excerpt.
+ * The caller is responsible for slicing to MAX_CONTEXT_CHUNKS before passing.
  */
 function buildContext(chunks: SearchChunk[]): string {
   return chunks
-    .slice(0, 20) // cap to 20 chunks; Llama 3.3 70B has a 128k-token context
-                  // but typical chunk text is ~200–400 tokens each, so 20 × 400
-                  // ≈ 8 000 tokens, which leaves ample room for the system
-                  // prompt (~500 tokens) and the 2 048-token output budget.
     .map((c, i) => `[${i + 1}] Source: ${c.item.key}\n${c.text.trim()}`)
     .join("\n\n---\n\n");
 }
@@ -281,7 +275,7 @@ function buildMarkdown(
       return `  - url: "${yamlEscape(s.url)}"${title}\n    type: "${s.type}"`;
     })
     .join("\n");
-  const tagsYaml = llm.tags.map((t) => `  - ${t}`).join("\n");
+  const tagsYaml = llm.tags.map((t) => `  - "${yamlEscape(t)}"`).join("\n");
 
   return `---
 title: "${yamlEscape(llm.title)}"
@@ -428,21 +422,24 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Deduplicate and sort by score (descending) for best context quality.
+  // Then cap to MAX_CONTEXT_CHUNKS so that sources and LLM context are always
+  // in sync: the LLM only reads the chunks it can reference.
   const seenChunkIds = new Set<string>();
-  const deduped = allChunks
+  const contextChunks = allChunks
     .filter((c) => {
       if (seenChunkIds.has(c.id)) return false;
       seenChunkIds.add(c.id);
       return true;
     })
-    .sort((a, b) => b.score - a.score);
+    .sort((a, b) => b.score - a.score)
+    .slice(0, MAX_CONTEXT_CHUNKS);
 
   // --- Extract sources & trust level ----------------------------------------
-  const sources = extractSources(deduped);
+  const sources = extractSources(contextChunks);
   const trustLevel = deriveTrustLevel(sources);
 
   // --- LLM generation -------------------------------------------------------
-  const context = buildContext(deduped);
+  const context = buildContext(contextChunks);
   let llmResult: { title: string; summary: string; tags: string[]; body: string };
   try {
     llmResult = await generateWithLLM(context, dateInput, topics);

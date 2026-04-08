@@ -37,15 +37,18 @@ const __dirname = dirname(__filename);
 // ---------------------------------------------------------------------------
 const args = process.argv.slice(2);
 
-function getFlag(flag: string): string | undefined {
-  const idx = args.indexOf(flag);
-  if (idx === -1) return undefined;
-  return args[idx + 1];
-}
-
 /** Returns true when a CLI argument looks like a named flag (--foo). */
 function isFlag(arg: string): boolean {
   return /^--[a-zA-Z]/.test(arg);
+}
+
+function getFlag(flag: string): string | undefined {
+  const idx = args.indexOf(flag);
+  if (idx === -1) return undefined;
+  const next = args[idx + 1];
+  // Guard: if the next token looks like a flag itself, there is no value.
+  if (next === undefined || isFlag(next)) return undefined;
+  return next;
 }
 
 function getFlagAll(flag: string): string[] {
