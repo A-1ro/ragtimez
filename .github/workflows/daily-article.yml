@@ -1,0 +1,64 @@
+name: Daily Article Generation
+
+on:
+  schedule:
+    # 毎朝 6:00 JST (21:00 UTC 前日)
+    - cron: "0 21 * * *"
+  workflow_dispatch:
+    inputs:
+      date:
+        description: "Article date (YYYY-MM-DD). Defaults to today UTC."
+        required: false
+        type: string
+      force:
+        description: "Overwrite existing article if present"
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  generate-and-commit:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate article
+        env:
+          GENERATE_ARTICLE_URL: ${{ secrets.GENERATE_ARTICLE_URL }}
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
+          ARTICLE_DATE: ${{ inputs.date }}
+          FORCE_FLAG: ${{ inputs.force }}
+        run: |
+          EXTRA_ARGS=()
+          if [ -n "$ARTICLE_DATE" ]; then
+            EXTRA_ARGS+=(--date "$ARTICLE_DATE")
+          fi
+          if [ "$FORCE_FLAG" = "true" ]; then
+            EXTRA_ARGS+=(--force)
+          fi
+          npm run generate:article -- ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+
+      - name: Commit and push generated article
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add src/content/articles/
+          if git diff --cached --quiet; then
+            echo "No new article to commit."
+          else
+            git commit -m "chore: add daily article $(date -u +%Y-%m-%d)"
+            git push
+          fi
