@@ -13,3 +13,12 @@ remote = true
 binding = "AI_SEARCH"
 instance_name = "ai-tech-daily-search"
 remote = true
+
+# KV namespace for GitHub OAuth session storage.
+# To create the namespace, run:
+#   wrangler kv namespace create AUTH_KV
+# Then replace the placeholder IDs below with the real namespace IDs.
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+preview_id = "REPLACE_WITH_YOUR_KV_NAMESPACE_PREVIEW_ID"
