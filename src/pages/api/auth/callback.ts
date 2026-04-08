@@ -129,8 +129,19 @@ export const GET: APIRoute = async ({ request }) => {
 
   // Validate the avatar URL to ensure it comes from GitHub's CDN and cannot
   // carry a javascript: URI or point to an attacker-controlled host.
+  // URL parsing (rather than startsWith) is used so the origin check is
+  // semantically precise and immune to tricks like
+  // "https://avatars.githubusercontent.com.evil.com/".
+  let parsedAvatar: URL | null;
+  try {
+    parsedAvatar = new URL(userData.avatar_url);
+  } catch {
+    parsedAvatar = null;
+  }
   if (
-    !userData.avatar_url.startsWith("https://avatars.githubusercontent.com/")
+    !parsedAvatar ||
+    parsedAvatar.protocol !== "https:" ||
+    parsedAvatar.hostname !== "avatars.githubusercontent.com"
   ) {
     return new Response("Unexpected avatar URL format", { status: 502 });
   }
