@@ -8,7 +8,8 @@
     "preview": "astro preview",
     "pages:dev": "wrangler pages dev",
     "astro": "astro",
-    "setup:ai-search": "tsx scripts/setup-ai-search.ts"
+    "setup:ai-search": "tsx scripts/setup-ai-search.ts",
+    "generate:article": "tsx scripts/generate-article.ts"
   },
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.7",
