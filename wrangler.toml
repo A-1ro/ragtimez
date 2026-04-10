@@ -6,7 +6,7 @@ compatibility_flags = ["nodejs_compat"]
 # Workers AI binding – used for LLM / embedding calls from Pages Functions
 [ai]
 binding = "AI"
-# remote = true  # ローカル開発時はコメントアウト（本番では有効にすること）
+remote = true  # ローカル開発時はコメントアウト（本番では有効にすること）
 
 [[d1_databases]]
 binding = "ragtimez_notes"
@@ -49,35 +49,3 @@ head_sampling_rate = 1
 # binding = "AUTH_KV"
 # id = "<your-kv-namespace-id>"
 # preview_id = "<your-kv-preview-namespace-id>"
-
-# D1 database for user profiles and community notes.
-#
-# Production (Cloudflare Pages dashboard):
-#   Settings → Functions → D1 database bindings → Add binding
-#   Variable name: DB → select your database
-#
-# Local development (wrangler pages dev):
-#   1. wrangler d1 create ragtimez-notes
-#   2. wrangler d1 migrations apply --local
-#   3. Fill in the database_id below.
-#
-# [[d1_databases]]
-# binding = "DB"
-# database_name = "ragtimez-notes"
-# database_id = "<your-d1-database-id>"
-
-# Custom domain setup (ragtimez.com)
-#
-# The steps below are completed in the Cloudflare Dashboard, not in this file.
-#
-# 1. Cloudflare DNS (ragtimez.com zone):
-#    - Type: CNAME  Name: @  Target: ragtimez.pages.dev  Proxy: ON
-#    - Type: CNAME  Name: www  Target: ragtimez.pages.dev  Proxy: ON
-#      (www → ragtimez.com redirect is handled by src/middleware.ts)
-#
-# 2. Cloudflare Pages (Dashboard → ragtimez project → Custom domains):
-#    - Add custom domain: ragtimez.com
-#    - Add custom domain: www.ragtimez.com (redirects to ragtimez.com via middleware)
-#    - Cloudflare automatically provisions SSL certificates for both.
-#
-# HTTPS is automatic via Cloudflare's Universal SSL.
