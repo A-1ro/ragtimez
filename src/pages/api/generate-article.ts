@@ -223,12 +223,24 @@ async function generateWithLLM(
   try {
     meta = JSON.parse(metaRaw);
   } catch {
-    throw new Error(`Metadata JSON parse failed. Raw: ${metaRaw.slice(0, 300)}`);
+    // Model sometimes emits malformed JSON (unclosed strings).
+    // Extract fields with regex as fallback.
+    const titleM = /"title"\s*:\s*"([^"]+)"/.exec(metaRaw);
+    const summaryM = /"summary"\s*:\s*"([^"]+)"/.exec(metaRaw);
+    const tagsM = /"tags"\s*:\s*\[([\s\S]*?)\]/.exec(metaRaw);
+    if (!titleM || !summaryM) {
+      throw new Error(`Metadata parse failed. Raw: ${metaRaw.slice(0, 300)}`);
+    }
+    meta = {
+      title: titleM[1].trim(),
+      summary: summaryM[1].replace(/,\s*$/, "").trim(),
+      tags: tagsM
+        ? (tagsM[1].match(/"([^"]+)"/g) ?? []).map((s) => s.replace(/"/g, ""))
+        : [],
+    };
   }
 
-  if (typeof meta.title !== "string" || !meta.title ||
-      typeof meta.summary !== "string" || !meta.summary ||
-      !Array.isArray(meta.tags)) {
+  if (!meta.title || !meta.summary) {
     throw new Error(`Metadata missing fields. Raw: ${metaRaw.slice(0, 300)}`);
   }
 
