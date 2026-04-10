@@ -231,7 +231,16 @@ Respond with the JSON structure only.`;
   try {
     parsed = JSON.parse(jsonText);
   } catch {
-    throw new Error(`LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`);
+    // LLMs sometimes emit literal newlines inside JSON string values instead of \n.
+    // Escape newlines only within quoted string spans, then retry.
+    try {
+      const sanitized = jsonText.replace(/"((?:[^"\\]|\\.)*)"/gs, (m) =>
+        m.replace(/\r?\n/g, "\\n")
+      );
+      parsed = JSON.parse(sanitized);
+    } catch {
+      throw new Error(`LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`);
+    }
   }
 
   if (
