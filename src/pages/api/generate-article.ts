@@ -209,7 +209,6 @@ async function generateWithLLM(
       ],
       max_tokens: 256,
       temperature: 0.3,
-      response_format: { type: "json_object" },
     },
   );
 
