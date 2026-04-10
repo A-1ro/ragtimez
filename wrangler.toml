@@ -8,6 +8,11 @@ compatibility_flags = ["nodejs_compat"]
 binding = "AI"
 # remote = true  # ローカル開発時はコメントアウト（本番では有効にすること）
 
+[[d1_databases]]
+binding = "ragtimez_notes"
+database_name = "ragtimez-notes"
+database_id = "a89f7c27-6f41-4d31-a820-28e8bfcf4566"
+
 # KV namespace for GitHub OAuth session storage.
 #
 # Production (Cloudflare Pages dashboard):
