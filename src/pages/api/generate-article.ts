@@ -211,7 +211,7 @@ Respond with the JSON structure only.`;
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userMessage },
     ],
-    max_tokens: 2048,
+    max_tokens: 4096,
     temperature: 0.4,
   });
 
