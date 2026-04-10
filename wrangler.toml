@@ -53,3 +53,18 @@ binding = "AI"
 # binding = "DB"
 # database_name = "ragtimez-notes"
 # database_id = "<your-d1-database-id>"
+
+# Custom domain setup (ragtimez.com)
+#
+# The steps below are completed in the Cloudflare Dashboard, not in this file.
+#
+# 1. Cloudflare DNS (ragtimez.com zone):
+#    - Type: CNAME  Name: @  Target: ragtimez.pages.dev  Proxy: ON
+#    - Type: CNAME  Name: www  Target: ragtimez.pages.dev  Proxy: ON
+#      (www → ragtimez.com redirect is handled by src/middleware.ts)
+#
+# 2. Cloudflare Pages (Dashboard → ragtimez project → Custom domains):
+#    - Add custom domain: ragtimez.com
+#    - Cloudflare automatically provisions the SSL certificate.
+#
+# HTTPS is automatic via Cloudflare's Universal SSL.
