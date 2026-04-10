@@ -5,25 +5,23 @@ import { timingSafeEqual } from "../../lib/auth";
 /**
  * GET /api/search?q=<query>&limit=<n>
  *
- * Queries the Cloudflare AI Search index (bound as AI_SEARCH in wrangler.toml)
- * and returns matching chunks from the crawled target sites.
+ * Searches the D1 rss_entries table using LIKE matching on title and summary.
  *
  * Authentication:
  *   Requires `Authorization: Bearer <INTERNAL_API_TOKEN>` header.
- *   Set the INTERNAL_API_TOKEN secret in Cloudflare Pages project settings.
  *
  * Query parameters:
- *   q      – required – natural-language search string
+ *   q      – required – search string
  *   limit  – optional – max results to return (default 10, max 50)
  *
  * Response (200):
- *   { search_query: string, chunks: Array<{ id, type, score, text, item }> }
+ *   { search_query: string, results: Array<{ title, link, source_label, summary, published_at }> }
  *
  * Error responses:
  *   400  – missing or empty `q` parameter
  *   401  – missing or invalid Authorization header
- *   500  – AI_SEARCH binding unavailable
- *   502  – AI Search upstream error
+ *   500  – DB binding unavailable
+ *   502  – D1 query error
  */
 export const GET: APIRoute = async ({ request }) => {
   // Authorization: constant-time comparison prevents timing attacks.
@@ -51,39 +49,43 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   const rawLimit = parseInt(searchParams.get("limit") ?? "10", 10);
-  const maxNumResults = Number.isFinite(rawLimit)
+  const limit = Number.isFinite(rawLimit)
     ? Math.min(Math.max(rawLimit, 1), 50)
     : 10;
 
-  if (!env.AI_SEARCH) {
+  if (!env.DB) {
     return new Response(
       JSON.stringify({
-        error: "AI_SEARCH binding is not available in this environment",
+        error: "DB binding is not available in this environment",
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  let response: Awaited<ReturnType<typeof env.AI_SEARCH.search>>;
+  const pattern = `%${query}%`;
+  let results: D1Result;
   try {
-    response = await env.AI_SEARCH.search({
-      messages: [{ role: "user", content: query }],
-      ai_search_options: {
-        retrieval: { max_num_results: maxNumResults },
-      },
-    });
+    results = await env.DB.prepare(
+      `SELECT title, link, source_label, summary, published_at
+       FROM rss_entries
+       WHERE title LIKE ? OR summary LIKE ?
+       ORDER BY published_at DESC
+       LIMIT ?`
+    )
+      .bind(pattern, pattern, limit)
+      .all();
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
-      JSON.stringify({ error: `AI Search request failed: ${message}` }),
+      JSON.stringify({ error: `Search query failed: ${message}` }),
       { status: 502, headers: { "Content-Type": "application/json" } }
     );
   }
 
   return new Response(
     JSON.stringify({
-      search_query: response.search_query,
-      chunks: response.chunks,
+      search_query: query,
+      results: results.results,
     }),
     {
       status: 200,

@@ -183,10 +183,10 @@ async function fetchRssFeed(feedUrl: string): Promise<RssEntry[]> {
  * Extract title, link, summary, and published date from RSS item content.
  */
 function parseRssItem(itemContent: string): RssEntry | null {
-  // Extract title (works for both <title> in item and entry)
-  const titleMatch = /<title(?:\s[^>]*)?>([^<]*)<\/title>/.exec(itemContent);
-  const titleRaw = titleMatch ? titleMatch[1] : undefined;
-  const title = titleRaw ? he(stripHtml(extractCdata(titleRaw))) : undefined;
+  // Extract title (plain text [1] | CDATA content [3])
+  const titleMatch = /<title(?:\s[^>]*)?>([^<]*?)<\/title>|<title(?:\s[^>]*)?>(<!\[CDATA\[([\s\S]*?)\]\]>)<\/title>/.exec(itemContent);
+  const titleRaw = titleMatch ? (titleMatch[1] ?? titleMatch[3]) : undefined;
+  const title = titleRaw ? he(stripHtml(titleRaw)) : undefined;
 
   // Extract link (RSS uses <link> directly, Atom uses <link href="">)
   let linkMatch = /<link\s+href="([^"]+)"/.exec(itemContent);
