@@ -194,6 +194,8 @@ async function generateWithLLM(
 ): Promise<{ title: string; summary: string; tags: string[]; body: string }> {
   const topicLine = topics.join(", ");
   const contextBlock = `Today is ${date}. Topics: ${topicLine}.\n\n${context}`;
+  // For metadata, pass only the raw news so the model derives title from actual content.
+  const newsOnly = `Today is ${date}.\n\n${context}`;
 
   // --- Step 1: metadata (title, summary, tags) ---
   // Use key:value format instead of JSON to avoid model confusion.
@@ -211,7 +213,7 @@ async function generateWithLLM(
             '- "tags": array of 3-5 specific English keywords (model names, company names, technologies).\n' +
             "Output only the JSON object, no markdown fences.",
         },
-        { role: "user", content: contextBlock },
+        { role: "user", content: newsOnly },
       ],
       max_tokens: 256,
       temperature: 0.3,
