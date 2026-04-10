@@ -202,10 +202,14 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            "You are a Japanese tech journalist. Output ONLY these three lines, nothing else:\n" +
-            "TITLE: <article title in Japanese, under 60 chars>\n" +
-            "SUMMARY: <1-2 sentence summary in Japanese>\n" +
-            "TAGS: <3-6 comma-separated English keywords>",
+            "You are a Japanese tech journalist. Read the news snippets and output ONLY these three lines:\n" +
+            "TITLE: (write the article title here in Japanese, under 60 chars)\n" +
+            "SUMMARY: (write a 1-2 sentence summary here in Japanese)\n" +
+            "TAGS: (write 3-6 comma-separated English keywords here)\n\n" +
+            "Example output:\n" +
+            "TITLE: OpenAIが新モデルを発表、開発者向け機能を強化\n" +
+            "SUMMARY: OpenAIは最新モデルを公開し、APIの応答速度と精度が大幅に向上した。\n" +
+            "TAGS: OpenAI, LLM, API",
         },
         { role: "user", content: contextBlock },
       ],
