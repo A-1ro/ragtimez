@@ -82,7 +82,7 @@ function classifySourceType(url: string): "official" | "blog" | "other" {
 }
 
 function deriveTrustLevel(
-  sources: { type: "official" | "blog" | "other" }[]
+  sources: { type: "official" | "blog" | "other" }[],
 ): "official" | "blog" | "speculative" {
   if (sources.length === 0) return "speculative";
   if (sources.some((s) => s.type === "official")) return "official";
@@ -134,7 +134,7 @@ const DEFAULT_TOPICS = [
   "AI tools and developer ecosystem updates",
 ];
 
-const LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
+const LLM_MODEL = "@cf/zai-org/glm-4.7-flash" as const;
 
 /**
  * Build a deduped source list from RSS entries.
@@ -159,7 +159,7 @@ function buildContext(entries: RssEntry[]): string {
   return entries
     .map(
       (e, i) =>
-        `[${i + 1}] Source: ${e.link}\nTitle: ${e.title}\n${e.summary ? e.summary.trim() : "(no summary)"}`
+        `[${i + 1}] Source: ${e.link}\nTitle: ${e.title}\n${e.summary ? e.summary.trim() : "(no summary)"}`,
     )
     .join("\n\n---\n\n");
 }
@@ -191,7 +191,7 @@ Rules:
 async function generateWithLLM(
   context: string,
   date: string,
-  topics: string[]
+  topics: string[],
 ): Promise<{ title: string; summary: string; tags: string[]; body: string }> {
   const userMessage = `Today is ${date}. Generate an article covering the following topics: ${topics.join(", ")}.
 
@@ -231,7 +231,7 @@ Respond with the JSON structure only.`;
   const raw =
     typeof response === "string"
       ? response
-      : (response as { response: string }).response ?? "";
+      : ((response as { response: string }).response ?? "");
 
   // Strip any markdown code fences the model may have added.
   const jsonText = raw
@@ -247,11 +247,13 @@ Respond with the JSON structure only.`;
     // Escape newlines only within quoted string spans, then retry.
     try {
       const sanitized = jsonText.replace(/"((?:[^"\\]|\\.)*)"/gs, (m) =>
-        m.replace(/\r?\n/g, "\\n")
+        m.replace(/\r?\n/g, "\\n"),
       );
       parsed = JSON.parse(sanitized);
     } catch {
-      throw new Error(`LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`);
+      throw new Error(
+        `LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`,
+      );
     }
   }
 
@@ -262,7 +264,7 @@ Respond with the JSON structure only.`;
     typeof parsed.body !== "string"
   ) {
     throw new Error(
-      `LLM JSON missing required fields: ${JSON.stringify(Object.keys(parsed))}`
+      `LLM JSON missing required fields: ${JSON.stringify(Object.keys(parsed))}`,
     );
   }
 
@@ -284,13 +286,11 @@ function buildMarkdown(
   llm: { title: string; summary: string; tags: string[]; body: string },
   date: string,
   sources: ArticleSource[],
-  trustLevel: "official" | "blog" | "speculative"
+  trustLevel: "official" | "blog" | "speculative",
 ): string {
   const sourcesYaml = sources
     .map((s) => {
-      const title = s.title
-        ? `\n    title: "${yamlEscape(s.title)}"`
-        : "";
+      const title = s.title ? `\n    title: "${yamlEscape(s.title)}"` : "";
       return `  - url: "${yamlEscape(s.url)}"${title}\n    type: "${s.type}"`;
     })
     .join("\n");
@@ -361,19 +361,21 @@ export const POST: APIRoute = async ({ request }) => {
   } catch {
     return new Response(
       JSON.stringify({ error: "Request body must be valid JSON" }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
   const dateInput =
-    typeof body.date === "string" ? body.date : new Date().toISOString().slice(0, 10);
+    typeof body.date === "string"
+      ? body.date
+      : new Date().toISOString().slice(0, 10);
   // Validate date format YYYY-MM-DD
   if (!/^\d{4}-\d{2}-\d{2}$/.test(dateInput)) {
     return new Response(
       JSON.stringify({
         error: "date must be in YYYY-MM-DD format",
       }),
-      { status: 400, headers: { "Content-Type": "application/json" } }
+      { status: 400, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -388,7 +390,7 @@ export const POST: APIRoute = async ({ request }) => {
       JSON.stringify({
         error: "DB binding is not available in this environment",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -397,7 +399,7 @@ export const POST: APIRoute = async ({ request }) => {
       JSON.stringify({
         error: "AI binding is not available in this environment",
       }),
-      { status: 500, headers: { "Content-Type": "application/json" } }
+      { status: 500, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -409,7 +411,7 @@ export const POST: APIRoute = async ({ request }) => {
        FROM rss_entries
        WHERE published_at >= datetime('now', ?)
        ORDER BY published_at DESC
-       LIMIT ?`
+       LIMIT ?`,
     )
       .bind(`-${RSS_LOOKBACK_DAYS} days`, MAX_CONTEXT_ENTRIES)
       .all();
@@ -423,7 +425,7 @@ export const POST: APIRoute = async ({ request }) => {
       JSON.stringify({
         error: `D1 query failed: ${message}`,
       }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+      { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -433,7 +435,7 @@ export const POST: APIRoute = async ({ request }) => {
         error:
           "No RSS entries found in D1. Run /api/fetch-rss first to populate the database.",
       }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+      { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
 
@@ -447,7 +449,12 @@ export const POST: APIRoute = async ({ request }) => {
 
   // --- LLM generation -------------------------------------------------------
   const context = buildContext(contextEntries);
-  let llmResult: { title: string; summary: string; tags: string[]; body: string };
+  let llmResult: {
+    title: string;
+    summary: string;
+    tags: string[];
+    body: string;
+  };
   try {
     llmResult = await generateWithLLM(context, dateInput, topics);
   } catch (err) {
@@ -456,7 +463,7 @@ export const POST: APIRoute = async ({ request }) => {
       JSON.stringify({
         error: `LLM generation failed: ${message}`,
       }),
-      { status: 502, headers: { "Content-Type": "application/json" } }
+      { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
 
