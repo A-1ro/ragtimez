@@ -6,13 +6,15 @@ compatibility_flags = ["nodejs_compat"]
 # Workers AI binding – used for LLM / embedding calls from Pages Functions
 [ai]
 binding = "AI"
-remote = true
+# remote = true  # ローカル開発時はコメントアウト（本番では有効にすること）
 
 # Cloudflare AI Search binding – enables querying the crawl index from Workers
-[[ai_search]]
-binding = "AI_SEARCH"
-instance_name = "ai-tech-daily-search"
-remote = true
+# ローカル開発時はセクション全体をコメントアウト（インスタンスが存在しないとエラーになるため）
+# 本番デプロイ前に以下のコメントを外すこと
+# [[ai_search]]
+# binding = "AI_SEARCH"
+# instance_name = "ai-tech-daily-search"
+# remote = true
 
 # KV namespace for GitHub OAuth session storage.
 #
