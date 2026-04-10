@@ -244,15 +244,21 @@ Respond with the JSON structure only.`;
     parsed = response as typeof parsed;
   } else {
     // Extract raw text from whichever response shape the model used.
-    type OpenAIResponse = { choices: { message: { content: string } }[] };
+    type OpenAIChoice = { message: { content: string | null; [k: string]: unknown } };
+    type OpenAIResponse = { choices: OpenAIChoice[] };
     type WorkersAIResponse = { response: string };
     let raw: string;
     if (typeof response === "string") {
       raw = response;
-    } else if (
-      (response as OpenAIResponse).choices?.[0]?.message?.content !== undefined
-    ) {
-      raw = (response as OpenAIResponse).choices[0].message.content;
+    } else if (Array.isArray((response as OpenAIResponse).choices)) {
+      const msg = (response as OpenAIResponse).choices[0]?.message;
+      // content may be null in structured-output mode; try other fields on message
+      const content = msg?.content ?? (msg as Record<string, unknown>)?.parsed;
+      raw = typeof content === "string"
+        ? content
+        : content != null
+          ? JSON.stringify(content)
+          : JSON.stringify(response);
     } else {
       raw = (response as WorkersAIResponse).response ?? JSON.stringify(response);
     }
