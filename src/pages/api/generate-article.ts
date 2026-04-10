@@ -266,7 +266,13 @@ async function generateWithLLM(
   const body = extractText(bodyResponse).trim();
   if (!body) throw new Error("LLM returned empty body");
 
-  return { ...meta, body };
+  // If the model returned a generic title, derive it from the first ## heading in the body.
+  const headingMatch = /^##\s+(.+)$/m.exec(body);
+  const title = (!meta.title || meta.title.length <= 2) && headingMatch
+    ? headingMatch[1].trim().slice(0, 60)
+    : meta.title;
+
+  return { ...meta, title, body };
 }
 
 /**
