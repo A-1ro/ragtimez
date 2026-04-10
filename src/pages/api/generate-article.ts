@@ -7,12 +7,17 @@ import { timingSafeEqual } from "../../lib/auth";
 // ---------------------------------------------------------------------------
 
 /**
- * Maximum number of chunks passed to the LLM context window.
- * Llama 3.3 70B has a 128k-token context, but typical chunk text is
- * ~200–400 tokens each, so 20 × 400 ≈ 8 000 tokens, which leaves ample room
+ * Maximum number of RSS entries passed to the LLM context window.
+ * Llama 3.3 70B has a 128k-token context. Each RSS entry is typically
+ * ~200–400 tokens, so 40 × 300 ≈ 12 000 tokens, which leaves ample room
  * for the system prompt (~500 tokens) and the 2 048-token output budget.
  */
-const MAX_CONTEXT_CHUNKS = 20;
+const MAX_CONTEXT_ENTRIES = 40;
+
+/**
+ * Number of days of RSS entries to retrieve from D1.
+ */
+const RSS_LOOKBACK_DAYS = 7;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -110,16 +115,13 @@ interface GeneratedArticle {
   };
 }
 
-interface SearchChunk {
-  id: string;
-  type: string;
-  score: number;
-  text: string;
-  item: {
-    timestamp?: number;
-    key: string;
-    metadata?: Record<string, unknown>;
-  };
+interface RssEntry {
+  source_label: string;
+  source_url: string;
+  title: string;
+  link: string;
+  summary: string;
+  published_at: string;
 }
 
 // ---------------------------------------------------------------------------
@@ -135,34 +137,30 @@ const DEFAULT_TOPICS = [
 const LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
 /**
- * Build a deduped source list from AI Search chunks.
- * The chunk `item.key` is typically the source URL.
+ * Build a deduped source list from RSS entries.
  */
-function extractSources(chunks: SearchChunk[]): ArticleSource[] {
+function extractSources(entries: RssEntry[]): ArticleSource[] {
   const seen = new Set<string>();
   const sources: ArticleSource[] = [];
-  for (const chunk of chunks) {
-    const url = chunk.item.key;
-    if (!url || seen.has(url)) continue;
-    seen.add(url);
-    const type = classifySourceType(url);
-    const title =
-      typeof chunk.item.metadata?.["title"] === "string"
-        ? chunk.item.metadata["title"]
-        : undefined;
-    sources.push({ url, title, type });
+  for (const entry of entries) {
+    if (seen.has(entry.link)) continue;
+    seen.add(entry.link);
+    const type = classifySourceType(entry.link);
+    sources.push({ url: entry.link, title: entry.title, type });
   }
   return sources;
 }
 
 /**
- * Convert chunks into a condensed context block for the LLM.
- * Each entry includes the source URL and the relevant text excerpt.
- * The caller is responsible for slicing to MAX_CONTEXT_CHUNKS before passing.
+ * Convert RSS entries into a condensed context block for the LLM.
+ * Each entry includes the source link, title, and summary.
  */
-function buildContext(chunks: SearchChunk[]): string {
-  return chunks
-    .map((c, i) => `[${i + 1}] Source: ${c.item.key}\n${c.text.trim()}`)
+function buildContext(entries: RssEntry[]): string {
+  return entries
+    .map(
+      (e, i) =>
+        `[${i + 1}] Source: ${e.link}\nTitle: ${e.title}\n${e.summary ? e.summary.trim() : "(no summary)"}`
+    )
     .join("\n\n---\n\n");
 }
 
@@ -300,16 +298,15 @@ ${llm.body.trim()}
 /**
  * POST /api/generate-article
  *
- * Generates a Markdown article using Cloudflare AI Search (for retrieval)
+ * Generates a Markdown article using D1 RSS entries (for retrieval)
  * and Workers AI / Llama 3.3 70B (for generation).
  *
  * Authentication:
  *   Requires `Authorization: Bearer <INTERNAL_API_TOKEN>` header.
  *
  * Request body (JSON, optional fields):
- *   date        – ISO date string (default: today in UTC, YYYY-MM-DD)
- *   topics      – string[]  search topics (defaults to general AI news)
- *   searchLimit – number    max AI Search results per topic (1–20, default 5)
+ *   date   – ISO date string (default: today in UTC, YYYY-MM-DD)
+ *   topics – string[]  search topics (defaults to general AI news)
  *
  * Response 200:
  *   { filename, content, metadata }
@@ -317,8 +314,8 @@ ${llm.body.trim()}
  * Error responses:
  *   400 – invalid request body
  *   401 – missing/invalid Authorization
- *   500 – AI or AI_SEARCH binding unavailable
- *   502 – AI Search or LLM upstream error
+ *   500 – AI or DB binding unavailable
+ *   502 – D1 or LLM upstream error
  */
 export const POST: APIRoute = async ({ request }) => {
   // --- Auth -----------------------------------------------------------------
@@ -364,15 +361,11 @@ export const POST: APIRoute = async ({ request }) => {
       ? (body.topics as string[]).map(String)
       : DEFAULT_TOPICS;
 
-  const rawLimit =
-    typeof body.searchLimit === "number" ? body.searchLimit : 5;
-  const searchLimit = Math.min(Math.max(Math.round(rawLimit), 1), 20);
-
   // --- Binding checks -------------------------------------------------------
-  if (!env.AI_SEARCH) {
+  if (!env.DB) {
     return new Response(
       JSON.stringify({
-        error: "AI_SEARCH binding is not available in this environment",
+        error: "DB binding is not available in this environment",
       }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
@@ -387,59 +380,52 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // --- AI Search (retrieval) ------------------------------------------------
-  const allChunks: SearchChunk[] = [];
+  // --- D1 (retrieval) -------------------------------------------------------
+  let allEntries: RssEntry[] = [];
+  try {
+    const result = await env.DB.prepare(
+      `SELECT source_label, source_url, title, link, summary, published_at
+       FROM rss_entries
+       WHERE published_at >= datetime('now', ?)
+       ORDER BY published_at DESC
+       LIMIT ?`
+    )
+      .bind(`-${RSS_LOOKBACK_DAYS} days`, MAX_CONTEXT_ENTRIES)
+      .all();
 
-  for (const topic of topics) {
-    let searchResult: Awaited<ReturnType<typeof env.AI_SEARCH.search>>;
-    try {
-      searchResult = await env.AI_SEARCH.search({
-        messages: [{ role: "user", content: topic }],
-        ai_search_options: {
-          retrieval: { max_num_results: searchLimit },
-        },
-      });
-    } catch (err) {
-      const message = err instanceof Error ? err.message : String(err);
-      return new Response(
-        JSON.stringify({
-          error: `AI Search request failed for topic "${topic}": ${message}`,
-        }),
-        { status: 502, headers: { "Content-Type": "application/json" } }
-      );
+    if (result.success && result.results) {
+      allEntries = result.results as RssEntry[];
     }
-    allChunks.push(...searchResult.chunks);
-  }
-
-  if (allChunks.length === 0) {
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
     return new Response(
       JSON.stringify({
-        error:
-          "AI Search returned no results. Ensure crawl targets are indexed.",
+        error: `D1 query failed: ${message}`,
       }),
       { status: 502, headers: { "Content-Type": "application/json" } }
     );
   }
 
-  // Deduplicate and sort by score (descending) for best context quality.
-  // Then cap to MAX_CONTEXT_CHUNKS so that sources and LLM context are always
-  // in sync: the LLM only reads the chunks it can reference.
-  const seenChunkIds = new Set<string>();
-  const contextChunks = allChunks
-    .filter((c) => {
-      if (seenChunkIds.has(c.id)) return false;
-      seenChunkIds.add(c.id);
-      return true;
-    })
-    .sort((a, b) => b.score - a.score)
-    .slice(0, MAX_CONTEXT_CHUNKS);
+  if (allEntries.length === 0) {
+    return new Response(
+      JSON.stringify({
+        error:
+          "No RSS entries found in D1. Run /api/fetch-rss first to populate the database.",
+      }),
+      { status: 502, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  // Cap to MAX_CONTEXT_ENTRIES so that sources and LLM context are always
+  // in sync: the LLM only reads the entries it can reference.
+  const contextEntries = allEntries.slice(0, MAX_CONTEXT_ENTRIES);
 
   // --- Extract sources & trust level ----------------------------------------
-  const sources = extractSources(contextChunks);
+  const sources = extractSources(contextEntries);
   const trustLevel = deriveTrustLevel(sources);
 
   // --- LLM generation -------------------------------------------------------
-  const context = buildContext(contextChunks);
+  const context = buildContext(contextEntries);
   let llmResult: { title: string; summary: string; tags: string[]; body: string };
   try {
     llmResult = await generateWithLLM(context, dateInput, topics);

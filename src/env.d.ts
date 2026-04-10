@@ -14,10 +14,9 @@ declare namespace Cloudflare {
   interface Env {
     /** Cloudflare Workers AI binding (LLM / embedding inference) */
     AI: Ai;
-    /** Cloudflare AI Search binding (crawl-index queries) */
-    AI_SEARCH: AiSearchInstance;
     /**
-     * Internal API token used to authenticate calls to /api/search.
+     * Internal API token used to authenticate calls to /api/generate-article
+     * and /api/fetch-rss.
      * Set this as a secret in the Cloudflare Pages project settings:
      *   wrangler pages secret put INTERNAL_API_TOKEN
      */
