@@ -229,7 +229,8 @@ Respond with the JSON structure only.`;
 
   // The model can return:
   //   - a string (raw text)
-  //   - { response: string } (most chat models)
+  //   - { response: string } (most Cloudflare Workers AI chat models)
+  //   - { choices: [{ message: { content: string } }] } (OpenAI-compatible format)
   //   - the parsed object directly (json_schema mode on some models)
   let parsed: { title: string; summary: string; tags: string[]; body: string };
 
@@ -242,10 +243,19 @@ Respond with the JSON structure only.`;
     // Already a parsed object — use it directly.
     parsed = response as typeof parsed;
   } else {
-    const raw =
-      typeof response === "string"
-        ? response
-        : ((response as { response?: string }).response ?? JSON.stringify(response));
+    // Extract raw text from whichever response shape the model used.
+    type OpenAIResponse = { choices: { message: { content: string } }[] };
+    type WorkersAIResponse = { response: string };
+    let raw: string;
+    if (typeof response === "string") {
+      raw = response;
+    } else if (
+      (response as OpenAIResponse).choices?.[0]?.message?.content !== undefined
+    ) {
+      raw = (response as OpenAIResponse).choices[0].message.content;
+    } else {
+      raw = (response as WorkersAIResponse).response ?? JSON.stringify(response);
+    }
 
     // Strip any markdown code fences the model may have added.
     const jsonText = raw
