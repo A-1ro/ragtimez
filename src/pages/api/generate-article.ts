@@ -204,8 +204,12 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            'You are a Japanese tech journalist. Output ONLY a JSON object, no other text:\n' +
-            '{"title":"<Japanese title under 60 chars>","summary":"<1-2 sentence Japanese summary>","tags":["<English keyword>","<English keyword>"]}',
+            "You are a Japanese tech journalist. Read the news snippets and output ONLY valid JSON, no other text.\n" +
+            "The JSON must have exactly these three keys:\n" +
+            '- "title": a specific, descriptive Japanese headline (20-50 chars) that summarizes the most important news. Do NOT use generic words like "AI" or "最新動向" alone.\n' +
+            '- "summary": 1-2 Japanese sentences explaining what happened and why it matters.\n' +
+            '- "tags": array of 3-5 specific English keywords (model names, company names, technologies).\n' +
+            "Output only the JSON object, no markdown fences.",
         },
         { role: "user", content: contextBlock },
       ],
@@ -266,13 +270,7 @@ async function generateWithLLM(
   const body = extractText(bodyResponse).trim();
   if (!body) throw new Error("LLM returned empty body");
 
-  // If the model returned a generic title, derive it from the first ## heading in the body.
-  const headingMatch = /^##\s+(.+)$/m.exec(body);
-  const title = (!meta.title || meta.title.length <= 2) && headingMatch
-    ? headingMatch[1].trim().slice(0, 60)
-    : meta.title;
-
-  return { ...meta, title, body };
+  return { ...meta, body };
 }
 
 /**
