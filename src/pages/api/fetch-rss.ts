@@ -197,17 +197,17 @@ function parseRssItem(itemContent: string): RssEntry | null {
   }
 
   // Extract summary (RSS: <description>, Atom: <summary>)
-  // Updated regex to capture CDATA blocks: ([\s\S]*?) instead of ([^<]*)
+  // Two-branch regex: plain text [1] | CDATA content [3]. Use [1] ?? [3].
   let summaryMatch = /<description(?:\s[^>]*)?>([^<]*?)<\/description>|<description(?:\s[^>]*)?>(<!\[CDATA\[([\s\S]*?)\]\]>)<\/description>/.exec(
     itemContent
   );
-  let summaryRaw = summaryMatch ? summaryMatch[1] : undefined;
-  let summary = summaryRaw ? he(stripHtml(extractCdata(summaryRaw))) : undefined;
+  let summaryRaw = summaryMatch ? (summaryMatch[1] ?? summaryMatch[3]) : undefined;
+  let summary = summaryRaw ? he(stripHtml(summaryRaw)) : undefined;
 
   if (!summary) {
     summaryMatch = /<summary(?:\s[^>]*)?>([^<]*?)<\/summary>|<summary(?:\s[^>]*)?>(<!\[CDATA\[([\s\S]*?)\]\]>)<\/summary>/.exec(itemContent);
-    summaryRaw = summaryMatch ? summaryMatch[1] : undefined;
-    summary = summaryRaw ? he(stripHtml(extractCdata(summaryRaw))) : undefined;
+    summaryRaw = summaryMatch ? (summaryMatch[1] ?? summaryMatch[3]) : undefined;
+    summary = summaryRaw ? he(stripHtml(summaryRaw)) : undefined;
   }
 
   // Extract published date (RSS: <pubDate>, Atom: <published>)
