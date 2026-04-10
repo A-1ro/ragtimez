@@ -228,19 +228,6 @@ const user = Astro.locals.user;
         border-color: var(--color-muted);
       }
 
-      /* Header stripe: RETRIEVAL-AUGMENTED INTELLIGENCE · AZURE EDITION */
-      .header-stripe {
-        border-top: 1px solid var(--color-border);
-        background: linear-gradient(90deg, transparent 0%, rgba(61,142,245,0.06) 50%, transparent 100%);
-        text-align: center;
-        padding: 0.4rem var(--spacing);
-        font-size: 0.625rem;
-        font-weight: 700;
-        letter-spacing: 0.12em;
-        color: var(--color-accent-soft);
-        text-transform: uppercase;
-        text-shadow: 0 0 8px rgba(147, 197, 253, 0.6);
-      }
 
       main {
         max-width: var(--max-width);
@@ -335,9 +322,6 @@ const user = Astro.locals.user;
             <a href="/api/auth/login" class="login-btn">GitHubでログイン</a>
           )}
         </div>
-      </div>
-      <div class="header-stripe">
-        RETRIEVAL-AUGMENTED INTELLIGENCE · AZURE EDITION
       </div>
     </header>
     <main>
