@@ -1,10 +1,10 @@
-# AI Tech Daily
+# RAGtimeZ
 
-> AI-powered daily tech blog covering Azure / LLM / RAG / AI Agents with community notes
+> Azure/LLM/RAG/AIエージェント特化の自動生成技術ブログ + コミュニティノート
 
 ## 1. Overview
 
-AI Tech Daily is a blog where AI automatically researches the web daily in the fields of Azure, LLM, RAG, and AI Agents, then auto-publishes one article per day. Readers and experts can add annotations, supplements, and corrections to articles through "Community Notes" (similar to X/Twitter's Community Notes).
+RAGtimeZ is a blog where AI automatically researches the web daily in the fields of Azure, LLM, RAG, and AI Agents, then auto-publishes one article per day. Readers and experts can add annotations, supplements, and corrections to articles through "Community Notes" (similar to X/Twitter's Community Notes).
 
 ### Why
 
