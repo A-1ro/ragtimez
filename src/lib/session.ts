@@ -23,6 +23,7 @@ export const OAUTH_STATE_TTL = 60;
 
 /** Data stored in a session. */
 export interface UserSession {
+  githubId: string;
   login: string;
   avatarUrl: string;
 }
