@@ -225,8 +225,8 @@ async function generateWithLLM(
   }
 
   const meta = {
-    title: titleMatch[1].trim(),
-    summary: summaryMatch[1].trim(),
+    title: titleMatch[1].replace(/^(summary|tags)\s*:/i, "").trim(),
+    summary: summaryMatch[1].replace(/^(title|tags)\s*:/i, "").trim(),
     tags: tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean),
   };
 
