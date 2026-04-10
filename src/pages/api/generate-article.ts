@@ -220,17 +220,17 @@ async function generateWithLLM(
 
   const metaRaw = extractText(metaResponse).trim();
 
-  const titleMatch = /^TITLE:\s*(.+)$/m.exec(metaRaw);
-  const summaryMatch = /^SUMMARY:\s*(.+)$/m.exec(metaRaw);
-  const tagsMatch = /^TAGS:\s*(.+)$/m.exec(metaRaw);
+  const titleMatch = /TITLE:\s*([\s\S]+?)(?=\nSUMMARY:)/i.exec(metaRaw);
+  const summaryMatch = /SUMMARY:\s*([\s\S]+?)(?=\nTAGS:)/i.exec(metaRaw);
+  const tagsMatch = /TAGS:\s*(.+)/i.exec(metaRaw);
 
   if (!titleMatch || !summaryMatch || !tagsMatch) {
     throw new Error(`Metadata parse failed. Raw: ${metaRaw.slice(0, 200)}`);
   }
 
   const meta = {
-    title: titleMatch[1].replace(/^(summary|tags)\s*:/i, "").trim(),
-    summary: summaryMatch[1].replace(/^(title|tags)\s*:/i, "").trim(),
+    title: titleMatch[1].replace(/\s+/g, " ").trim(),
+    summary: summaryMatch[1].replace(/\s+/g, " ").trim(),
     tags: tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean),
   };
 
