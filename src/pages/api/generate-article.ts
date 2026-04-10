@@ -194,6 +194,7 @@ async function generateWithLLM(
   const contextBlock = `Today is ${date}. Topics: ${topicLine}.\n\n${context}`;
 
   // --- Step 1: metadata (title, summary, tags) ---
+  // Use key:value format instead of JSON to avoid model confusion.
   const metaResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
     LLM_MODEL,
     {
@@ -201,9 +202,10 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            "You are a Japanese tech journalist. Output ONLY a JSON object with keys: " +
-            'title (string, ≤60 chars), summary (string, 1-2 sentences), tags (array of 3-6 strings). ' +
-            "No markdown fences. No extra text. Write all values in Japanese except tags.",
+            "You are a Japanese tech journalist. Output ONLY these three lines, nothing else:\n" +
+            "TITLE: <article title in Japanese, under 60 chars>\n" +
+            "SUMMARY: <1-2 sentence summary in Japanese>\n" +
+            "TAGS: <3-6 comma-separated English keywords>",
         },
         { role: "user", content: contextBlock },
       ],
@@ -212,21 +214,21 @@ async function generateWithLLM(
     },
   );
 
-  const metaRaw = extractText(metaResponse)
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
+  const metaRaw = extractText(metaResponse).trim();
 
-  let meta: { title: string; summary: string; tags: string[] };
-  try {
-    meta = JSON.parse(metaRaw);
-  } catch {
-    throw new Error(`Metadata JSON parse failed: ${metaRaw.slice(0, 200)}`);
+  const titleMatch = /^TITLE:\s*(.+)$/m.exec(metaRaw);
+  const summaryMatch = /^SUMMARY:\s*(.+)$/m.exec(metaRaw);
+  const tagsMatch = /^TAGS:\s*(.+)$/m.exec(metaRaw);
+
+  if (!titleMatch || !summaryMatch || !tagsMatch) {
+    throw new Error(`Metadata parse failed. Raw: ${metaRaw.slice(0, 200)}`);
   }
 
-  if (typeof meta.title !== "string" || typeof meta.summary !== "string" || !Array.isArray(meta.tags)) {
-    throw new Error(`Metadata missing fields: ${JSON.stringify(Object.keys(meta))}`);
-  }
+  const meta = {
+    title: titleMatch[1].trim(),
+    summary: summaryMatch[1].trim(),
+    tags: tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean),
+  };
 
   // --- Step 2: body (plain Markdown, no JSON) ---
   const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
