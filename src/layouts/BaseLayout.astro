@@ -45,7 +45,7 @@ const user = Astro.locals.user;
       rel="alternate"
       type="application/rss+xml"
       title="AI Tech Daily RSS Feed"
-      href="/rss.xml"
+      href={new URL("/rss.xml", Astro.site ?? Astro.url.origin).href}
     />
     <title>{title}</title>
 
