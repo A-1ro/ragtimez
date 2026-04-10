@@ -25,6 +25,7 @@ const user = Astro.locals.user;
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <meta name="description" content={description} />
+    <link rel="icon" href="/favicon.png" type="image/png" />
 
     <!-- OGP -->
     <meta property="og:type" content={ogType} />
@@ -47,6 +48,15 @@ const user = Astro.locals.user;
       title="RAGtimeZ RSS Feed"
       href={new URL("/rss.xml", Astro.site ?? Astro.url.origin).href}
     />
+
+    <!-- Google Fonts: Playfair Display -->
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;900&display=swap"
+      rel="stylesheet"
+    />
+
     <title>{title}</title>
 
     <style>
@@ -55,18 +65,23 @@ const user = Astro.locals.user;
       }
 
       :root {
-        --color-bg: #0f1117;
-        --color-surface: #1a1d27;
-        --color-border: #2a2d3a;
-        --color-text: #e2e8f0;
-        --color-muted: #8892a4;
-        --color-accent: #60a5fa;
-        --color-accent-hover: #93c5fd;
+        --color-bg: #080c1e;
+        --color-surface: #0d1330;
+        --color-border: #1b2554;
+        --color-text: #e4ebff;
+        --color-muted: #6b7db3;
+        --color-accent: #3d8ef5;
+        --color-accent-hover: #6aabff;
+        --color-accent-soft: #93c5fd;
+        --color-glow: rgba(61, 142, 245, 0.25);
+        --color-amber: #d97706;
         --trust-official: #22c55e;
         --trust-blog: #f59e0b;
         --trust-speculative: #ef4444;
+        --font-display: 'Playfair Display', Georgia, serif;
         --max-width: 900px;
         --spacing: 1.5rem;
+        --gradient-azure: linear-gradient(135deg, #38bdf8 0%, #3d8ef5 100%);
       }
 
       html, body {
@@ -90,26 +105,46 @@ const user = Astro.locals.user;
 
       header {
         border-bottom: 1px solid var(--color-border);
-        background: var(--color-surface);
+        background: rgba(13, 19, 48, 0.92);
+        backdrop-filter: blur(12px);
+        -webkit-backdrop-filter: blur(12px);
         position: sticky;
         top: 0;
         z-index: 100;
+        box-shadow: 0 1px 30px rgba(61, 142, 245, 0.08);
       }
 
-      header nav {
+      /* Header top: brand name + RSS/auth */
+      .header-top {
         max-width: var(--max-width);
         margin: 0 auto;
-        padding: 0.75rem var(--spacing);
+        padding: 1.25rem var(--spacing);
         display: flex;
         align-items: center;
-        gap: 1rem;
         justify-content: space-between;
+        gap: 1rem;
       }
 
       .nav-left {
         display: flex;
         align-items: center;
         gap: 0.75rem;
+      }
+
+      .brand-link {
+        display: inline-flex;
+        align-items: center;
+        text-decoration: none;
+      }
+      .brand-link:hover {
+        text-decoration: none;
+        opacity: 0.85;
+      }
+
+      .brand-logo {
+        height: 36px;
+        width: auto;
+        display: block;
       }
 
       .rss-link {
@@ -127,17 +162,6 @@ const user = Astro.locals.user;
         text-decoration: none;
       }
 
-      header nav a {
-        font-weight: 700;
-        font-size: 1.1rem;
-        color: var(--color-text);
-        letter-spacing: -0.02em;
-      }
-      header nav a:hover {
-        color: var(--color-accent-hover);
-        text-decoration: none;
-      }
-
       .nav-auth {
         display: flex;
         align-items: center;
@@ -149,18 +173,19 @@ const user = Astro.locals.user;
         gap: 0.4rem;
         font-size: 0.875rem;
         font-weight: 600;
-        color: var(--color-text);
-        background: var(--color-border);
-        border: 1px solid var(--color-border);
+        color: var(--color-accent-soft);
+        background: rgba(61, 142, 245, 0.08);
+        border: 1px solid rgba(61, 142, 245, 0.3);
         border-radius: 0.5rem;
         padding: 0.35em 0.9em;
-        transition: background 0.2s, border-color 0.2s;
+        transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
         text-decoration: none;
       }
       .login-btn:hover {
         background: var(--color-accent);
         border-color: var(--color-accent);
         color: #fff;
+        box-shadow: 0 0 16px rgba(61, 142, 245, 0.4);
         text-decoration: none;
       }
 
@@ -203,6 +228,20 @@ const user = Astro.locals.user;
         border-color: var(--color-muted);
       }
 
+      /* Header stripe: RETRIEVAL-AUGMENTED INTELLIGENCE · AZURE EDITION */
+      .header-stripe {
+        border-top: 1px solid var(--color-border);
+        background: linear-gradient(90deg, transparent 0%, rgba(61,142,245,0.06) 50%, transparent 100%);
+        text-align: center;
+        padding: 0.4rem var(--spacing);
+        font-size: 0.625rem;
+        font-weight: 700;
+        letter-spacing: 0.12em;
+        color: var(--color-accent-soft);
+        text-transform: uppercase;
+        text-shadow: 0 0 8px rgba(147, 197, 253, 0.6);
+      }
+
       main {
         max-width: var(--max-width);
         margin: 0 auto;
@@ -211,11 +250,36 @@ const user = Astro.locals.user;
 
       footer {
         border-top: 1px solid var(--color-border);
-        text-align: center;
-        padding: 1.5rem var(--spacing);
+        padding: 2rem var(--spacing);
         color: var(--color-muted);
         font-size: 0.875rem;
         margin-top: 4rem;
+      }
+
+      .footer-content {
+        max-width: var(--max-width);
+        margin: 0 auto;
+        display: grid;
+        grid-template-columns: 1fr 1fr;
+        gap: 2rem;
+        align-items: start;
+      }
+
+      .footer-brand {
+        height: 28px;
+        width: auto;
+        display: block;
+        margin: 0 0 0.5rem;
+        opacity: 1;
+      }
+
+      .footer-copyright {
+        font-size: 0.8125rem;
+        margin: 0;
+      }
+
+      .footer-info {
+        text-align: right;
       }
 
       @media (max-width: 600px) {
@@ -225,14 +289,26 @@ const user = Astro.locals.user;
         html, body {
           font-size: 15px;
         }
+        .brand-logo {
+          height: 28px;
+        }
+.footer-content {
+          grid-template-columns: 1fr;
+          text-align: left;
+        }
+        .footer-info {
+          text-align: left;
+        }
       }
     </style>
   </head>
   <body>
     <header>
-      <nav>
+      <div class="header-top">
         <div class="nav-left">
-          <a href="/">RAGtimeZ</a>
+          <a href="/" class="brand-link">
+            <img src="/logo.png" alt="RAGtimeZ" class="brand-logo" />
+          </a>
           <a href="/rss.xml" class="rss-link" aria-label="RSSフィード">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20 4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/>
@@ -259,13 +335,24 @@ const user = Astro.locals.user;
             <a href="/api/auth/login" class="login-btn">GitHubでログイン</a>
           )}
         </div>
-      </nav>
+      </div>
+      <div class="header-stripe">
+        RETRIEVAL-AUGMENTED INTELLIGENCE · AZURE EDITION
+      </div>
     </header>
     <main>
       <slot />
     </main>
     <footer>
-      <p>&copy; {new Date().getFullYear()} RAGtimeZ</p>
+      <div class="footer-content">
+        <div>
+          <img src="/logo.png" alt="RAGtimeZ" class="footer-brand" />
+          <p class="footer-copyright">&copy; {new Date().getFullYear()} RAGtimeZ. All rights reserved.</p>
+        </div>
+        <div class="footer-info">
+          <p>AI-powered daily tech blog covering Azure, LLM, RAG, and AI Agents</p>
+        </div>
+      </div>
     </footer>
   </body>
 </html>
