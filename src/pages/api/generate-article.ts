@@ -173,7 +173,10 @@ function extractText(response: unknown): string {
   const r = response as Record<string, unknown>;
   if (typeof r.response === "string") return r.response;
   const choices = r.choices as { message: { content: string } }[] | undefined;
-  return choices?.[0]?.message?.content ?? "";
+  const content = choices?.[0]?.message?.content;
+  if (typeof content === "string") return content;
+  // Some models return a parsed object directly (e.g. in json_object mode).
+  return JSON.stringify(response);
 }
 
 /**
