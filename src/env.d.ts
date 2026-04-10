@@ -37,6 +37,11 @@ declare namespace Cloudflare {
      * Create with: wrangler kv namespace create AUTH_KV
      */
     AUTH_KV: KVNamespace;
+    /**
+     * D1 database for storing user profiles and community notes.
+     * Create with: wrangler d1 create ragtimez-notes
+     */
+    DB: D1Database;
   }
 }
 

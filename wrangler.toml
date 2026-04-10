@@ -35,3 +35,19 @@ remote = true
 # binding = "AUTH_KV"
 # id = "<your-kv-namespace-id>"
 # preview_id = "<your-kv-preview-namespace-id>"
+
+# D1 database for user profiles and community notes.
+#
+# Production (Cloudflare Pages dashboard):
+#   Settings → Functions → D1 database bindings → Add binding
+#   Variable name: DB → select your database
+#
+# Local development (wrangler pages dev):
+#   1. wrangler d1 create ragtimez-notes
+#   2. wrangler d1 migrations apply --local
+#   3. Fill in the database_id below.
+#
+# [[d1_databases]]
+# binding = "DB"
+# database_name = "ragtimez-notes"
+# database_id = "REPLACE_WITH_YOUR_D1_DATABASE_ID"
