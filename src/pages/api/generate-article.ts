@@ -134,7 +134,7 @@ const DEFAULT_TOPICS = [
   "AI tools and developer ecosystem updates",
 ];
 
-const LLM_MODEL = "@cf/zai-org/glm-4.7-flash" as const;
+const LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
 /**
  * Build a deduped source list from RSS entries.
