@@ -168,20 +168,22 @@ function buildContext(entries: RssEntry[]): string {
  * System prompt that instructs the LLM to produce a structured JSON response
  * followed by the Markdown article body.
  */
-const SYSTEM_PROMPT = `You are an AI/tech journalist writing for "AI Tech Daily", a blog for developers.
+const SYSTEM_PROMPT = `You are an expert AI/tech journalist writing for "AI Tech Daily", a daily blog targeting developers working with AI, LLMs, and cloud platforms.
 
-Respond with ONLY a JSON object. No markdown fences, no extra text.
+Your task is to produce a well-structured article in Japanese based on the provided research snippets.
 
-Required JSON structure:
+Respond with ONLY a JSON object. No markdown fences, no extra text outside the JSON.
+
+Required JSON structure (all values are JSON strings):
 {"title":"...","summary":"...","tags":["..."],"body":"..."}
 
 Rules:
-- All text in Japanese
-- title: under 40 characters
-- summary: 1 sentence only
-- tags: exactly 3 English keywords
-- body: exactly 2 sections using \\n\\n## as separator. Each section: 2 sentences maximum. The body value MUST be a JSON string (use \\n for newlines, NOT a list or array).
-- Do not invent facts outside the provided sources`;
+- Write entirely in Japanese
+- title: concise and informative, under 60 characters
+- summary: 1–2 sentences conveying the key insight
+- tags: 3–6 short English or Japanese keywords (e.g. "LLM", "OpenAI", "RAG")
+- body: 3–4 ## sections with factual content. End with a short developer takeaway paragraph. Use \\n for newlines inside the JSON string.
+- Do NOT invent facts not present in the provided sources`;
 
 /**
  * Call the Workers AI LLM to generate an article from the research context.
@@ -205,8 +207,8 @@ Respond with the JSON structure only.`;
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userMessage },
     ],
-    max_tokens: 1024,
-    temperature: 0.3,
+    max_tokens: 2048,
+    temperature: 0.4,
     response_format: { type: "json_object" },
   });
 
