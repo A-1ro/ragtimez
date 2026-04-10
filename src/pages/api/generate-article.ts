@@ -165,139 +165,90 @@ function buildContext(entries: RssEntry[]): string {
 }
 
 /**
- * System prompt that instructs the LLM to produce a structured JSON response
- * followed by the Markdown article body.
+ * Extract the text content from a Workers AI response.
+ * Handles both { response: string } and OpenAI-compatible { choices: [...] } shapes.
  */
-const SYSTEM_PROMPT = `You are an expert AI/tech journalist writing for "AI Tech Daily", a daily blog targeting developers working with AI, LLMs, and cloud platforms.
-
-Your task is to produce a well-structured article in Japanese based on the provided research snippets.
-
-Respond with ONLY a JSON object. No markdown fences, no extra text outside the JSON.
-
-Required JSON structure (all values are JSON strings):
-{"title":"...","summary":"...","tags":["..."],"body":"..."}
-
-Rules:
-- Write entirely in Japanese
-- title: concise and informative, under 60 characters
-- summary: 1–2 sentences conveying the key insight
-- tags: 3–6 short English or Japanese keywords (e.g. "LLM", "OpenAI", "RAG")
-- body: 3–4 ## sections with factual content. End with a short developer takeaway paragraph. Use \\n for newlines inside the JSON string.
-- Do NOT invent facts not present in the provided sources`;
+function extractText(response: unknown): string {
+  if (typeof response === "string") return response;
+  const r = response as Record<string, unknown>;
+  if (typeof r.response === "string") return r.response;
+  const choices = r.choices as { message: { content: string } }[] | undefined;
+  return choices?.[0]?.message?.content ?? "";
+}
 
 /**
  * Call the Workers AI LLM to generate an article from the research context.
+ * Uses two separate calls to avoid embedding Markdown inside JSON:
+ *   1. Metadata (title, summary, tags) — small JSON, reliable
+ *   2. Body — plain Markdown, no JSON escaping needed
  */
 async function generateWithLLM(
   context: string,
   date: string,
   topics: string[],
 ): Promise<{ title: string; summary: string; tags: string[]; body: string }> {
-  const userMessage = `Today is ${date}. Generate an article covering the following topics: ${topics.join(", ")}.
+  const topicLine = topics.join(", ");
+  const contextBlock = `Today is ${date}. Topics: ${topicLine}.\n\n${context}`;
 
-Use the research snippets below as your sole factual basis:
-
-${context}
-
-Respond with the JSON structure only.`;
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const response = await (env.AI.run as any)(LLM_MODEL, {
-    messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      { role: "user", content: userMessage },
-    ],
-    max_tokens: 2048,
-    temperature: 0.4,
-    response_format: {
-      type: "json_schema",
-      json_schema: {
-        name: "article",
-        schema: {
-          type: "object",
-          properties: {
-            title: { type: "string" },
-            summary: { type: "string" },
-            tags: { type: "array", items: { type: "string" } },
-            body: { type: "string" },
-          },
-          required: ["title", "summary", "tags", "body"],
+  // --- Step 1: metadata (title, summary, tags) ---
+  const metaResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
+    LLM_MODEL,
+    {
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a Japanese tech journalist. Output ONLY a JSON object with keys: " +
+            'title (string, ≤60 chars), summary (string, 1-2 sentences), tags (array of 3-6 strings). ' +
+            "No markdown fences. No extra text. Write all values in Japanese except tags.",
         },
-      },
+        { role: "user", content: contextBlock },
+      ],
+      max_tokens: 256,
+      temperature: 0.3,
+      response_format: { type: "json_object" },
     },
-  });
+  );
 
-  // The model can return:
-  //   - a string (raw text)
-  //   - { response: string } (most Cloudflare Workers AI chat models)
-  //   - { choices: [{ message: { content: string } }] } (OpenAI-compatible format)
-  //   - the parsed object directly (json_schema mode on some models)
-  let parsed: { title: string; summary: string; tags: string[]; body: string };
+  const metaRaw = extractText(metaResponse)
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 
-  if (
-    typeof response === "object" &&
-    response !== null &&
-    "title" in (response as object) &&
-    "body" in (response as object)
-  ) {
-    // Already a parsed object — use it directly.
-    parsed = response as typeof parsed;
-  } else {
-    // Extract raw text from whichever response shape the model used.
-    type OpenAIChoice = { message: { content: string | null; [k: string]: unknown } };
-    type OpenAIResponse = { choices: OpenAIChoice[] };
-    type WorkersAIResponse = { response: string };
-    let raw: string;
-    if (typeof response === "string") {
-      raw = response;
-    } else if (Array.isArray((response as OpenAIResponse).choices)) {
-      const msg = (response as OpenAIResponse).choices[0]?.message;
-      // content may be null in structured-output mode; try other fields on message
-      const content = msg?.content ?? (msg as Record<string, unknown>)?.parsed;
-      raw = typeof content === "string"
-        ? content
-        : content != null
-          ? JSON.stringify(content)
-          : JSON.stringify(response);
-    } else {
-      raw = (response as WorkersAIResponse).response ?? JSON.stringify(response);
-    }
-
-    // Strip any markdown code fences the model may have added.
-    const jsonText = raw
-      .replace(/^```(?:json)?\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
-
-    try {
-      parsed = JSON.parse(jsonText);
-    } catch {
-      // LLMs sometimes emit literal newlines inside JSON string values instead of \n.
-      try {
-        const sanitized = jsonText.replace(/"((?:[^"\\]|\\.)*)"/gs, (m) =>
-          m.replace(/\r?\n/g, "\\n"),
-        );
-        parsed = JSON.parse(sanitized);
-      } catch {
-        throw new Error(
-          `LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`,
-        );
-      }
-    }
+  let meta: { title: string; summary: string; tags: string[] };
+  try {
+    meta = JSON.parse(metaRaw);
+  } catch {
+    throw new Error(`Metadata JSON parse failed: ${metaRaw.slice(0, 200)}`);
   }
 
-  if (
-    typeof parsed.title !== "string" ||
-    typeof parsed.summary !== "string" ||
-    !Array.isArray(parsed.tags) ||
-    typeof parsed.body !== "string"
-  ) {
-    throw new Error(
-      `LLM JSON missing required fields: ${JSON.stringify(Object.keys(parsed))}`,
-    );
+  if (typeof meta.title !== "string" || typeof meta.summary !== "string" || !Array.isArray(meta.tags)) {
+    throw new Error(`Metadata missing fields: ${JSON.stringify(Object.keys(meta))}`);
   }
 
-  return parsed;
+  // --- Step 2: body (plain Markdown, no JSON) ---
+  const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
+    LLM_MODEL,
+    {
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a Japanese tech journalist. Write a blog article body in Japanese Markdown. " +
+            "Start directly with ## headings. Write 3-4 sections, each 3-4 sentences. " +
+            "End with a short developer takeaway paragraph. Output only the Markdown, nothing else.",
+        },
+        { role: "user", content: contextBlock },
+      ],
+      max_tokens: 1024,
+      temperature: 0.4,
+    },
+  );
+
+  const body = extractText(bodyResponse).trim();
+  if (!body) throw new Error("LLM returned empty body");
+
+  return { ...meta, body };
 }
 
 /**
