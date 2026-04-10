@@ -430,7 +430,7 @@ export const POST: APIRoute = async ({ request }) => {
       .all();
 
     if (result.success && result.results) {
-      allEntries = result.results as RssEntry[];
+      allEntries = result.results as unknown as RssEntry[];
     }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
