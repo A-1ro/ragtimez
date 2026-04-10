@@ -5,6 +5,7 @@
   "scripts": {
     "dev": "astro dev",
     "build": "astro build",
+    "postbuild": "node -e \"const fs=require('fs');const p='dist/server/wrangler.json';const c=JSON.parse(fs.readFileSync(p,'utf8'));if(c.assets)delete c.assets.binding;fs.writeFileSync(p,JSON.stringify(c));\"",
     "preview": "astro preview",
     "pages:dev": "wrangler pages dev",
     "astro": "astro",
@@ -12,7 +13,7 @@
     "generate:article": "tsx scripts/generate-article.ts"
   },
   "dependencies": {
-    "@astrojs/cloudflare": "^13.1.7",
+    "@astrojs/cloudflare": "^13.1.8",
     "astro": "^6.1.4"
   },
   "devDependencies": {
