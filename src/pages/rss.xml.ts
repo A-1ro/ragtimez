@@ -11,7 +11,7 @@ export async function GET(context: APIContext) {
   const siteUrl = context.site ?? new URL(context.url.origin);
 
   return rss({
-    title: "AI Tech Daily",
+    title: "RAGtimeZ",
     description:
       "AI-powered daily tech blog covering Azure / LLM / RAG / AI Agents",
     site: siteUrl,
