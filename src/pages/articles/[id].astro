@@ -597,13 +597,9 @@ const user = Astro.locals.user ?? null;
       height: 32px;
     }
 
-    :global(.note-header) {
-      flex-direction: column;
-      align-items: flex-start;
-    }
-
-    :global(.note-delete-btn) {
-      align-self: flex-end;
+    :global(.note-meta) {
+      flex: 1;
+      min-width: 0;
     }
 
     .note-form-container {
