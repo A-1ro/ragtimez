@@ -209,7 +209,22 @@ Respond with the JSON structure only.`;
     ],
     max_tokens: 2048,
     temperature: 0.4,
-    response_format: { type: "json_object" },
+    response_format: {
+      type: "json_schema",
+      json_schema: {
+        name: "article",
+        schema: {
+          type: "object",
+          properties: {
+            title: { type: "string" },
+            summary: { type: "string" },
+            tags: { type: "array", items: { type: "string" } },
+            body: { type: "string" },
+          },
+          required: ["title", "summary", "tags", "body"],
+        },
+      },
+    },
   });
 
   // The model can return a string or an object with a `response` field.
