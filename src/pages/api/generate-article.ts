@@ -9,10 +9,10 @@ import { timingSafeEqual } from "../../lib/auth";
 /**
  * Maximum number of RSS entries passed to the LLM context window.
  * Llama 3.3 70B has a 128k-token context. Each RSS entry is typically
- * ~200–400 tokens, so 40 × 300 ≈ 12 000 tokens, which leaves ample room
- * for the system prompt (~500 tokens) and the 2 048-token output budget.
+ * ~200–400 tokens, so 20 × 300 ≈ 6 000 tokens for input, leaving the
+ * majority of the 4 096-token output budget for the article JSON.
  */
-const MAX_CONTEXT_ENTRIES = 40;
+const MAX_CONTEXT_ENTRIES = 20;
 
 /**
  * Number of days of RSS entries to retrieve from D1.
@@ -185,8 +185,9 @@ Guidelines:
 - The title should be concise and informative (under 60 characters).
 - The summary must be 1–2 sentences that convey the key insight.
 - tags: 3–6 short English or Japanese keywords (e.g. "LLM", "OpenAI", "RAG").
-- The body should have 2–4 ## sections with factual content grounded in the sources.
-- End the body with a short paragraph about what developers should take away.
+- The body must have exactly 3 ## sections. Each section must be 3–4 sentences only. Do NOT write long paragraphs.
+- End the body with one short takeaway sentence for developers.
+- Total body length must be under 600 Japanese characters.
 - Do NOT invent facts not present in the provided sources.
 - Do NOT include any frontmatter, code fences, or explanations outside the JSON.`;
 
