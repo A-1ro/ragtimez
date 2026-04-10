@@ -20,6 +20,7 @@ export async function GET(context: APIContext) {
       pubDate: article.data.date,
       description: article.data.summary,
       link: `/articles/${article.id}/`,
+      content: article.rendered?.html,
     })),
     customData: `<language>ja</language>`,
   });
