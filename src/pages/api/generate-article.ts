@@ -258,13 +258,14 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            "You are a Japanese tech journalist. Write a blog article body in Japanese Markdown. " +
-            "Start directly with ## headings. Write 3-4 sections, each 3-4 sentences. " +
-            "End with a short developer takeaway paragraph. Output only the Markdown, nothing else.",
+            "You are a Japanese tech journalist. Write a comprehensive blog article in Japanese Markdown. " +
+            "Start directly with ## headings. Write 4-6 sections. Each section should be 4-6 sentences with enough detail to be informative. " +
+            "Cover multiple topics from the sources. End with a ## まとめ section summarizing key takeaways for developers. " +
+            "Output only the Markdown, nothing else.",
         },
         { role: "user", content: contextBlock },
       ],
-      max_tokens: 1024,
+      max_tokens: 2048,
       temperature: 0.4,
     },
   );
