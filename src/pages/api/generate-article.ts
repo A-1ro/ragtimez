@@ -227,33 +227,46 @@ Respond with the JSON structure only.`;
     },
   });
 
-  // The model can return a string or an object with a `response` field.
-  const raw =
-    typeof response === "string"
-      ? response
-      : ((response as { response: string }).response ?? "");
-
-  // Strip any markdown code fences the model may have added.
-  const jsonText = raw
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
+  // The model can return:
+  //   - a string (raw text)
+  //   - { response: string } (most chat models)
+  //   - the parsed object directly (json_schema mode on some models)
   let parsed: { title: string; summary: string; tags: string[]; body: string };
-  try {
-    parsed = JSON.parse(jsonText);
-  } catch {
-    // LLMs sometimes emit literal newlines inside JSON string values instead of \n.
-    // Escape newlines only within quoted string spans, then retry.
+
+  if (
+    typeof response === "object" &&
+    response !== null &&
+    "title" in (response as object) &&
+    "body" in (response as object)
+  ) {
+    // Already a parsed object — use it directly.
+    parsed = response as typeof parsed;
+  } else {
+    const raw =
+      typeof response === "string"
+        ? response
+        : ((response as { response?: string }).response ?? JSON.stringify(response));
+
+    // Strip any markdown code fences the model may have added.
+    const jsonText = raw
+      .replace(/^```(?:json)?\s*/i, "")
+      .replace(/\s*```$/i, "")
+      .trim();
+
     try {
-      const sanitized = jsonText.replace(/"((?:[^"\\]|\\.)*)"/gs, (m) =>
-        m.replace(/\r?\n/g, "\\n"),
-      );
-      parsed = JSON.parse(sanitized);
+      parsed = JSON.parse(jsonText);
     } catch {
-      throw new Error(
-        `LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`,
-      );
+      // LLMs sometimes emit literal newlines inside JSON string values instead of \n.
+      try {
+        const sanitized = jsonText.replace(/"((?:[^"\\]|\\.)*)"/gs, (m) =>
+          m.replace(/\r?\n/g, "\\n"),
+        );
+        parsed = JSON.parse(sanitized);
+      } catch {
+        throw new Error(
+          `LLM returned non-JSON response: ${raw.slice(0, 200)}${raw.length > 200 ? "…(truncated)" : ""}`,
+        );
+      }
     }
   }
 
