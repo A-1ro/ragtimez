@@ -1,4 +1,4 @@
-name = "ai-tech-daily"
+name = "ragtimez"
 pages_build_output_dir = "./dist"
 compatibility_date = "2025-04-07"
 compatibility_flags = ["nodejs_compat"]
