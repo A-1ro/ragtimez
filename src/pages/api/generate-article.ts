@@ -202,14 +202,8 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            "You are a Japanese tech journalist. Read the news snippets and output ONLY these three lines:\n" +
-            "TITLE: (write the article title here in Japanese, under 60 chars)\n" +
-            "SUMMARY: (write a 1-2 sentence summary here in Japanese)\n" +
-            "TAGS: (write 3-6 comma-separated English keywords here)\n\n" +
-            "Example output:\n" +
-            "TITLE: OpenAIが新モデルを発表、開発者向け機能を強化\n" +
-            "SUMMARY: OpenAIは最新モデルを公開し、APIの応答速度と精度が大幅に向上した。\n" +
-            "TAGS: OpenAI, LLM, API",
+            'You are a Japanese tech journalist. Output ONLY a JSON object, no other text:\n' +
+            '{"title":"<Japanese title under 60 chars>","summary":"<1-2 sentence Japanese summary>","tags":["<English keyword>","<English keyword>"]}',
         },
         { role: "user", content: contextBlock },
       ],
@@ -218,23 +212,23 @@ async function generateWithLLM(
     },
   );
 
-  const metaRaw = extractText(metaResponse).trim();
-  // DEBUG: remove after confirming format
-  throw new Error(`DEBUG metaRaw: ${JSON.stringify(metaRaw)}`);
+  const metaRaw = extractText(metaResponse)
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
 
-  const titleMatch = /TITLE:\s*([\s\S]+?)(?=\nSUMMARY:)/i.exec(metaRaw);
-  const summaryMatch = /SUMMARY:\s*([\s\S]+?)(?=\nTAGS:)/i.exec(metaRaw);
-  const tagsMatch = /TAGS:\s*(.+)/i.exec(metaRaw);
-
-  if (!titleMatch || !summaryMatch || !tagsMatch) {
-    throw new Error(`Metadata parse failed. Raw: ${metaRaw.slice(0, 200)}`);
+  let meta: { title: string; summary: string; tags: string[] };
+  try {
+    meta = JSON.parse(metaRaw);
+  } catch {
+    throw new Error(`Metadata JSON parse failed. Raw: ${metaRaw.slice(0, 300)}`);
   }
 
-  const meta = {
-    title: titleMatch[1].replace(/\s+/g, " ").trim(),
-    summary: summaryMatch[1].replace(/\s+/g, " ").trim(),
-    tags: tagsMatch[1].split(",").map((t) => t.trim()).filter(Boolean),
-  };
+  if (typeof meta.title !== "string" || !meta.title ||
+      typeof meta.summary !== "string" || !meta.summary ||
+      !Array.isArray(meta.tags)) {
+    throw new Error(`Metadata missing fields. Raw: ${metaRaw.slice(0, 300)}`);
+  }
 
   // --- Step 2: body (plain Markdown, no JSON) ---
   const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
