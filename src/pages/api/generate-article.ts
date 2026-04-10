@@ -168,28 +168,20 @@ function buildContext(entries: RssEntry[]): string {
  * System prompt that instructs the LLM to produce a structured JSON response
  * followed by the Markdown article body.
  */
-const SYSTEM_PROMPT = `You are an expert AI/tech journalist writing for "AI Tech Daily", a daily blog targeting developers working with AI, LLMs, and cloud platforms.
+const SYSTEM_PROMPT = `You are an AI/tech journalist writing for "AI Tech Daily", a blog for developers.
 
-Your task is to produce a well-structured article in Japanese based on the provided research snippets.
+Respond with ONLY a JSON object. No markdown fences, no extra text.
 
-You MUST respond with valid JSON in exactly the following structure and nothing else:
-{
-  "title": "<Japanese article title>",
-  "summary": "<1–2 sentence Japanese summary>",
-  "tags": ["tag1", "tag2"],
-  "body": "<full Markdown body in Japanese (no frontmatter, start directly with ## headings)>"
-}
+Required JSON structure:
+{"title":"...","summary":"...","tags":["..."],"body":"..."}
 
-Guidelines:
-- Write entirely in Japanese.
-- The title should be concise and informative (under 60 characters).
-- The summary must be 1–2 sentences that convey the key insight.
-- tags: 3–6 short English or Japanese keywords (e.g. "LLM", "OpenAI", "RAG").
-- The body must have exactly 3 ## sections. Each section must be 3–4 sentences only. Do NOT write long paragraphs.
-- End the body with one short takeaway sentence for developers.
-- Total body length must be under 600 Japanese characters.
-- Do NOT invent facts not present in the provided sources.
-- Do NOT include any frontmatter, code fences, or explanations outside the JSON.`;
+Rules:
+- All text in Japanese
+- title: under 40 characters
+- summary: 1 sentence only
+- tags: exactly 3 English keywords
+- body: exactly 2 sections using \\n\\n## as separator. Each section: 2 sentences maximum. The body value MUST be a JSON string (use \\n for newlines, NOT a list or array).
+- Do not invent facts outside the provided sources`;
 
 /**
  * Call the Workers AI LLM to generate an article from the research context.
@@ -207,13 +199,15 @@ ${context}
 
 Respond with the JSON structure only.`;
 
-  const response = await env.AI.run(LLM_MODEL, {
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const response = await (env.AI.run as any)(LLM_MODEL, {
     messages: [
       { role: "system", content: SYSTEM_PROMPT },
       { role: "user", content: userMessage },
     ],
-    max_tokens: 4096,
-    temperature: 0.4,
+    max_tokens: 1024,
+    temperature: 0.3,
+    response_format: { type: "json_object" },
   });
 
   // The model can return a string or an object with a `response` field.
