@@ -28,24 +28,7 @@ enabled = false
 persist = true
 head_sampling_rate = 1
 
-# KV namespace for GitHub OAuth session storage.
-#
-# Production (Cloudflare Pages dashboard):
-#   Settings → Functions → KV namespace bindings → Add binding
-#   Variable name: AUTH_KV  →  select your namespace
-#
-# Local development (wrangler pages dev):
-#   1. wrangler kv namespace create AUTH_KV
-#   2. wrangler kv namespace create AUTH_KV --preview
-#   3. Fill in the IDs below.
-#
-# NOTE: Do NOT commit real namespace IDs to source control.
-#       The [[kv_namespaces]] block below is intentionally left unconfigured
-#       so that wrangler pages dev fails with a clear error rather than
-#       deploying with wrong IDs.  Update this file locally before running
-#       `wrangler pages dev`.
-#
-# [[kv_namespaces]]
-# binding = "AUTH_KV"
-# id = "<your-kv-namespace-id>"
-# preview_id = "<your-kv-preview-namespace-id>"
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "dee444cd9a8545c096aa7727217d7320"
+preview_id = "c4f39ef696eb4e10887031b9080765fc"
