@@ -386,7 +386,7 @@ export const POST: APIRoute = async ({ request }) => {
     const result = await env.DB.prepare(
       `SELECT source_label, source_url, title, link, summary, published_at
        FROM rss_entries
-       WHERE published_at >= datetime('now', ?)
+       WHERE published_at IS NOT NULL AND published_at >= datetime('now', ?)
        ORDER BY published_at DESC
        LIMIT ?`
     )

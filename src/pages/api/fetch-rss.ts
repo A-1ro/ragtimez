@@ -117,6 +117,35 @@ interface RssEntry {
 }
 
 /**
+ * Extract CDATA content from a string.
+ * If the string contains a CDATA block, returns the content inside it.
+ * Otherwise returns the original string.
+ */
+function extractCdata(raw: string): string {
+  const cdataMatch = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
+  return cdataMatch ? cdataMatch[1] : raw;
+}
+
+/**
+ * Strip HTML tags from a string.
+ * Collapses multiple spaces and trims the result.
+ */
+function stripHtml(s: string): string {
+  return s.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim();
+}
+
+/**
+ * Parse a date string and return ISO string, or null if parsing fails.
+ * Handles Invalid Date cases safely.
+ */
+function parseDate(raw: string | undefined): string | null {
+  if (!raw) return null;
+  const d = new Date(raw.trim());
+  if (isNaN(d.getTime())) return null;
+  return d.toISOString();
+}
+
+/**
  * Parse RSS XML feed and extract entries.
  * Uses simple regex-based parsing since DOMParser is not available in Workers.
  */
@@ -156,7 +185,8 @@ async function fetchRssFeed(feedUrl: string): Promise<RssEntry[]> {
 function parseRssItem(itemContent: string): RssEntry | null {
   // Extract title (works for both <title> in item and entry)
   const titleMatch = /<title(?:\s[^>]*)?>([^<]*)<\/title>/.exec(itemContent);
-  const title = titleMatch ? he(titleMatch[1]) : undefined;
+  const titleRaw = titleMatch ? titleMatch[1] : undefined;
+  const title = titleRaw ? he(stripHtml(extractCdata(titleRaw))) : undefined;
 
   // Extract link (RSS uses <link> directly, Atom uses <link href="">)
   let linkMatch = /<link\s+href="([^"]+)"/.exec(itemContent);
@@ -167,13 +197,17 @@ function parseRssItem(itemContent: string): RssEntry | null {
   }
 
   // Extract summary (RSS: <description>, Atom: <summary>)
-  let summaryMatch = /<description(?:\s[^>]*)?>([^<]*)<\/description>/.exec(
+  // Updated regex to capture CDATA blocks: ([\s\S]*?) instead of ([^<]*)
+  let summaryMatch = /<description(?:\s[^>]*)?>([^<]*?)<\/description>|<description(?:\s[^>]*)?>(<!\[CDATA\[([\s\S]*?)\]\]>)<\/description>/.exec(
     itemContent
   );
-  let summary = summaryMatch ? he(summaryMatch[1]) : undefined;
+  let summaryRaw = summaryMatch ? summaryMatch[1] : undefined;
+  let summary = summaryRaw ? he(stripHtml(extractCdata(summaryRaw))) : undefined;
+
   if (!summary) {
-    summaryMatch = /<summary(?:\s[^>]*)?>([^<]*)<\/summary>/.exec(itemContent);
-    summary = summaryMatch ? he(summaryMatch[1]) : undefined;
+    summaryMatch = /<summary(?:\s[^>]*)?>([^<]*?)<\/summary>|<summary(?:\s[^>]*)?>(<!\[CDATA\[([\s\S]*?)\]\]>)<\/summary>/.exec(itemContent);
+    summaryRaw = summaryMatch ? summaryMatch[1] : undefined;
+    summary = summaryRaw ? he(stripHtml(extractCdata(summaryRaw))) : undefined;
   }
 
   // Extract published date (RSS: <pubDate>, Atom: <published>)
@@ -184,13 +218,10 @@ function parseRssItem(itemContent: string): RssEntry | null {
     publishedAt = pubDateMatch ? pubDateMatch[1] : undefined;
   }
 
-  // Normalize date to ISO string if possible
+  // Normalize date to ISO string or null if parsing fails
+  let normalizedDate: string | null = null;
   if (publishedAt) {
-    try {
-      publishedAt = new Date(publishedAt).toISOString();
-    } catch {
-      // Keep original string if parsing fails
-    }
+    normalizedDate = parseDate(publishedAt);
   }
 
   // Require at least title and link
@@ -202,7 +233,7 @@ function parseRssItem(itemContent: string): RssEntry | null {
     title,
     link,
     summary: summary || "",
-    publishedAt: publishedAt || new Date().toISOString(),
+    publishedAt: normalizedDate || new Date().toISOString(),
   };
 }
 
