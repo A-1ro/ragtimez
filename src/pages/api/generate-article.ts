@@ -260,7 +260,8 @@ async function generateWithLLM(
           content:
             "You are a Japanese tech journalist. Write a comprehensive blog article in Japanese Markdown. " +
             "Start directly with ## headings. Write 4-6 sections. Each section should be 4-6 sentences with enough detail to be informative. " +
-            "Cover multiple topics from the sources. End with a ## まとめ section summarizing key takeaways for developers. " +
+            "Cover news from ALL sources provided, including Azure, AWS, Google, OpenAI, and others — do not focus only on one company. " +
+            "End with a ## まとめ section summarizing key takeaways for developers. " +
             "Output only the Markdown, nothing else.",
         },
         { role: "user", content: contextBlock },
@@ -415,10 +416,16 @@ export const POST: APIRoute = async ({ request }) => {
       `SELECT source_label, source_url, title, link, summary, published_at
        FROM rss_entries
        WHERE published_at >= datetime('now', ?)
-       ORDER BY published_at DESC
-       LIMIT ?`,
+         AND rowid IN (
+           SELECT rowid FROM rss_entries r2
+           WHERE r2.source_label = rss_entries.source_label
+             AND r2.published_at >= datetime('now', ?)
+           ORDER BY r2.published_at DESC
+           LIMIT 2
+         )
+       ORDER BY published_at DESC`,
     )
-      .bind(`-${RSS_LOOKBACK_DAYS} days`, MAX_CONTEXT_ENTRIES)
+      .bind(`-${RSS_LOOKBACK_DAYS} days`, `-${RSS_LOOKBACK_DAYS} days`)
       .all();
 
     if (result.success && result.results) {
