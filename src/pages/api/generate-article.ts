@@ -219,6 +219,8 @@ async function generateWithLLM(
   );
 
   const metaRaw = extractText(metaResponse).trim();
+  // DEBUG: remove after confirming format
+  throw new Error(`DEBUG metaRaw: ${JSON.stringify(metaRaw)}`);
 
   const titleMatch = /TITLE:\s*([\s\S]+?)(?=\nSUMMARY:)/i.exec(metaRaw);
   const summaryMatch = /SUMMARY:\s*([\s\S]+?)(?=\nTAGS:)/i.exec(metaRaw);
