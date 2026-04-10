@@ -39,6 +39,20 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      - name: Fetch RSS feeds
+        env:
+          FETCH_RSS_URL: ${{ secrets.FETCH_RSS_URL }}
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
+        run: |
+          if [ -z "$FETCH_RSS_URL" ]; then
+            echo "Error: FETCH_RSS_URL secret is not set"
+            exit 1
+          fi
+          curl -s -f -X POST "$FETCH_RSS_URL" \
+            -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            --max-time 60 || echo "RSS fetch warning: some feeds may have failed"
+
       - name: Generate article
         env:
           GENERATE_ARTICLE_URL: ${{ secrets.GENERATE_ARTICLE_URL }}
