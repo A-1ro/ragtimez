@@ -65,6 +65,7 @@ binding = "AI"
 #
 # 2. Cloudflare Pages (Dashboard → ragtimez project → Custom domains):
 #    - Add custom domain: ragtimez.com
-#    - Cloudflare automatically provisions the SSL certificate.
+#    - Add custom domain: www.ragtimez.com (redirects to ragtimez.com via middleware)
+#    - Cloudflare automatically provisions SSL certificates for both.
 #
 # HTTPS is automatic via Cloudflare's Universal SSL.

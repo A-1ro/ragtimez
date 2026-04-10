@@ -14,12 +14,12 @@ import { getSessionId, getSession } from "./lib/session";
  */
 export const onRequest = defineMiddleware(async (context, next) => {
   // Redirect www.ragtimez.com to ragtimez.com (301 Moved Permanently)
+  // Exact match only to prevent open redirect attacks
   const host = context.request.headers.get("host");
-  if (host?.toLowerCase().startsWith("www.")) {
+  if (host?.toLowerCase() === "www.ragtimez.com") {
     const url = new URL(context.request.url);
-    const redirectUrl = new URL(url);
-    redirectUrl.host = host.slice(4); // Remove "www." prefix
-    return context.redirect(redirectUrl.href, 301);
+    url.hostname = "ragtimez.com";
+    return context.redirect(url.href, 301);
   }
   if (!env.AUTH_KV) {
     // AUTH_KV is not bound – sessions are unavailable.  This is expected
