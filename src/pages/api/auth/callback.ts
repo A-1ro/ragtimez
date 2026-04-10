@@ -16,6 +16,7 @@ interface GitHubTokenResponse {
 }
 
 interface GitHubUserResponse {
+  id: number;
   login: string;
   avatar_url: string;
 }
@@ -148,6 +149,7 @@ export const GET: APIRoute = async ({ request }) => {
 
   // Create a server-side session and issue a cookie.
   const sessionId = await createSession(env.AUTH_KV, {
+    githubId: String(userData.id),
     login: userData.login,
     avatarUrl: userData.avatar_url,
   });

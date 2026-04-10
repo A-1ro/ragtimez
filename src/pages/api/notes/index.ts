@@ -68,9 +68,9 @@ export const GET: APIRoute = async ({ request }) => {
       }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error("[api/notes] GET failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: `Database query failed: ${message}` }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -157,9 +157,8 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     // Extract user info from session – locals.user comes from middleware.ts
-    // The user object has { login, avatarUrl } from session.ts
-    const githubId = locals.user.login; // NOTE: this should be github_id, not login
-    // For now we use login as github_id since that's what's stored in session
+    // The user object has { githubId, login, avatarUrl } from session.ts
+    const githubId = locals.user.githubId;
     const username = locals.user.login;
     const avatarUrl = locals.user.avatarUrl || null;
 
@@ -201,9 +200,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error("[api/notes] POST failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: `Database operation failed: ${message}` }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

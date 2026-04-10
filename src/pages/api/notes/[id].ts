@@ -43,9 +43,9 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
   }
 
   try {
-    const githubId = locals.user.login;
+    const githubId = locals.user.githubId;
 
-    // Fetch the note to verify ownership
+    // Fetch the note to verify existence and ownership
     const noteResult = await env.DB.prepare(
       `SELECT id, author_github_id FROM notes WHERE id = ?`
     )
@@ -69,16 +69,27 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
       );
     }
 
-    // Delete the note
-    await env.DB.prepare(`DELETE FROM notes WHERE id = ?`)
-      .bind(noteId)
+    // Delete the note (atomic: only succeeds if ownership matches)
+    const result = await env.DB.prepare(
+      `DELETE FROM notes WHERE id = ? AND author_github_id = ?`
+    )
+      .bind(noteId, githubId)
       .run();
+
+    // Safety check: ensure exactly one row was deleted (should always be true given our SELECT above,
+    // but this guards against race conditions where the note was deleted between our SELECT and DELETE)
+    if (result.meta.changes === 0) {
+      return new Response(
+        JSON.stringify({ error: "Note not found" }),
+        { status: 404, headers: { "Content-Type": "application/json" } }
+      );
+    }
 
     return new Response(null, { status: 204 });
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    console.error("[api/notes/id] DELETE failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: `Database operation failed: ${message}` }),
+      JSON.stringify({ error: "Internal server error" }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
