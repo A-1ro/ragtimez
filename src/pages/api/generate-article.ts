@@ -171,7 +171,9 @@ function buildContext(entries: RssEntry[]): string {
 function extractText(response: unknown): string {
   if (typeof response === "string") return response;
   const r = response as Record<string, unknown>;
-  if (typeof r.response === "string") return r.response;
+  if (r.response !== undefined) {
+    return typeof r.response === "string" ? r.response : JSON.stringify(r.response);
+  }
   const choices = r.choices as { message: { content: string } }[] | undefined;
   const content = choices?.[0]?.message?.content;
   if (typeof content === "string") return content;
