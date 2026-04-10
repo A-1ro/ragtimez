@@ -307,6 +307,15 @@ const user = Astro.locals.user ?? null;
   .source-link {
     font-size: 0.9375rem;
     word-break: break-all;
+    color: var(--color-text);
+    text-decoration: underline;
+    text-decoration-color: var(--color-border);
+    text-underline-offset: 3px;
+    transition: color 0.15s, text-decoration-color 0.15s;
+  }
+  .source-link:hover {
+    color: var(--color-accent-soft);
+    text-decoration-color: var(--color-accent-soft);
   }
 
   .source-type {
