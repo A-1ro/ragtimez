@@ -1,0 +1,22 @@
+name: Config Placeholder Check
+
+on:
+  push:
+    branches: ["**"]
+  pull_request:
+
+jobs:
+  check-placeholders:
+    name: No placeholder values in config
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Detect uncommitted placeholder strings
+        run: |
+          if grep -rn "REPLACE_WITH_YOUR" --include="*.toml" --include="*.json" --include="*.ts" --include="*.js" --include="*.mjs" .; then
+            echo ""
+            echo "ERROR: Placeholder strings found. Replace all REPLACE_WITH_YOUR_* values before merging."
+            exit 1
+          fi
+          echo "OK: No placeholder strings detected."

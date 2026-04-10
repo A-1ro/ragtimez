@@ -22,11 +22,29 @@ declare namespace Cloudflare {
      *   wrangler pages secret put INTERNAL_API_TOKEN
      */
     INTERNAL_API_TOKEN: string;
+    /**
+     * GitHub OAuth App client ID.
+     * Set via: wrangler pages secret put GITHUB_CLIENT_ID
+     */
+    GITHUB_CLIENT_ID: string;
+    /**
+     * GitHub OAuth App client secret.
+     * Set via: wrangler pages secret put GITHUB_CLIENT_SECRET
+     */
+    GITHUB_CLIENT_SECRET: string;
+    /**
+     * KV namespace for storing user sessions and OAuth state.
+     * Create with: wrangler kv namespace create AUTH_KV
+     */
+    AUTH_KV: KVNamespace;
   }
 }
 
 type Runtime = import("@astrojs/cloudflare").Runtime;
 
 declare namespace App {
-  interface Locals extends Runtime {}
+  interface Locals extends Runtime {
+    /** Populated by middleware when a valid session cookie is present. */
+    user?: import("./lib/session").UserSession;
+  }
 }

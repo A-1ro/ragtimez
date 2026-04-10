@@ -16,6 +16,7 @@ const {
 } = Astro.props;
 
 const siteName = "AI Tech Daily";
+const user = Astro.locals.user;
 ---
 
 <!doctype html>
@@ -96,6 +97,7 @@ const siteName = "AI Tech Daily";
         display: flex;
         align-items: center;
         gap: 1rem;
+        justify-content: space-between;
       }
 
       header nav a {
@@ -107,6 +109,71 @@ const siteName = "AI Tech Daily";
       header nav a:hover {
         color: var(--color-accent-hover);
         text-decoration: none;
+      }
+
+      .nav-auth {
+        display: flex;
+        align-items: center;
+      }
+
+      .login-btn {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.4rem;
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text);
+        background: var(--color-border);
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 0.35em 0.9em;
+        transition: background 0.2s, border-color 0.2s;
+        text-decoration: none;
+      }
+      .login-btn:hover {
+        background: var(--color-accent);
+        border-color: var(--color-accent);
+        color: #fff;
+        text-decoration: none;
+      }
+
+      .user-info {
+        display: flex;
+        align-items: center;
+        gap: 0.5rem;
+      }
+
+      .user-avatar {
+        border-radius: 50%;
+        display: block;
+        flex-shrink: 0;
+      }
+
+      .user-login {
+        font-size: 0.875rem;
+        font-weight: 600;
+        color: var(--color-text);
+      }
+
+      .logout-form {
+        margin: 0;
+        padding: 0;
+      }
+
+      .logout-btn {
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--color-muted);
+        background: none;
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 0.3em 0.75em;
+        cursor: pointer;
+        transition: color 0.2s, border-color 0.2s;
+      }
+      .logout-btn:hover {
+        color: var(--color-text);
+        border-color: var(--color-muted);
       }
 
       main {
@@ -138,6 +205,25 @@ const siteName = "AI Tech Daily";
     <header>
       <nav>
         <a href="/">AI Tech Daily</a>
+        <div class="nav-auth">
+          {user ? (
+            <div class="user-info">
+              <img
+                src={user.avatarUrl}
+                alt={user.login}
+                class="user-avatar"
+                width="28"
+                height="28"
+              />
+              <span class="user-login">{user.login}</span>
+              <form method="POST" action="/api/auth/logout" class="logout-form">
+                <button type="submit" class="logout-btn">ログアウト</button>
+              </form>
+            </div>
+          ) : (
+            <a href="/api/auth/login" class="login-btn">GitHubでログイン</a>
+          )}
+        </div>
       </nav>
     </header>
     <main>
