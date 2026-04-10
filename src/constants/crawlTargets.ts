@@ -37,10 +37,10 @@ export const CRAWL_TARGETS: CrawlTarget[] = [
     description: "Research and product updates from OpenAI",
   },
   {
-    label: "Anthropic Blog",
-    url: "https://www.anthropic.com/news",
-    rssUrl: "https://www.anthropic.com/rss.xml",
-    description: "Research, safety, and product news from Anthropic",
+    label: "Google AI Blog",
+    url: "https://blog.google/technology/ai/",
+    rssUrl: "https://blog.google/innovation-and-ai/technology/ai/rss/",
+    description: "AI research and product news from Google",
   },
   {
     label: "LangChain Blog",
@@ -49,10 +49,10 @@ export const CRAWL_TARGETS: CrawlTarget[] = [
     description: "Tutorials, releases, and use-cases for LangChain / LangGraph",
   },
   {
-    label: "Microsoft Learn – What's New",
-    url: "https://learn.microsoft.com/en-us/azure/whats-new/",
-    rssUrl: "https://learn.microsoft.com/en-us/azure/whats-new/feed/",
-    description: "Microsoft Learn documentation updates for Azure services",
+    label: "TechCrunch AI",
+    url: "https://techcrunch.com/category/artificial-intelligence/",
+    rssUrl: "https://techcrunch.com/category/artificial-intelligence/feed/",
+    description: "AI industry news and startup coverage from TechCrunch",
   },
   {
     label: "Hugging Face Blog",
@@ -73,9 +73,9 @@ export const CRAWL_TARGETS: CrawlTarget[] = [
     description: "AWS ML service announcements and best-practice guides",
   },
   {
-    label: "Meta AI Blog",
-    url: "https://ai.meta.com/blog/",
-    rssUrl: "https://ai.meta.com/blog/rss.xml",
-    description: "AI research and product updates from Meta",
+    label: "VentureBeat AI",
+    url: "https://venturebeat.com/category/ai/",
+    rssUrl: "https://venturebeat.com/category/ai/feed",
+    description: "AI business and technology news from VentureBeat",
   },
 ];

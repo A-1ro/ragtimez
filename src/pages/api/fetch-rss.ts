@@ -21,6 +21,13 @@ import { CRAWL_TARGETS } from "../../constants/crawlTargets";
  *   500 – DB binding unavailable
  *   502 – RSS fetch or database error
  */
+/**
+ * Maximum number of RSS entries to insert per feed per invocation.
+ * Cloudflare D1 enforces a limit of ~1000 API calls per Worker invocation.
+ * With 10 feeds × 50 entries = 500 insert statements, well within budget.
+ */
+const MAX_ENTRIES_PER_FEED = 50;
+
 export const POST: APIRoute = async ({ request }) => {
   // --- Auth ---
   const authHeader = request.headers.get("Authorization");
@@ -54,8 +61,10 @@ export const POST: APIRoute = async ({ request }) => {
 
   for (const target of CRAWL_TARGETS) {
     try {
-      const entries = await fetchRssFeed(target.rssUrl);
-      fetchedCount += entries.length;
+      const allEntries = await fetchRssFeed(target.rssUrl);
+      fetchedCount += allEntries.length;
+      // Limit to the most recent entries to stay within D1 API call budget.
+      const entries = allEntries.slice(0, MAX_ENTRIES_PER_FEED);
 
       for (const entry of entries) {
         try {
@@ -114,16 +123,6 @@ interface RssEntry {
   link: string;
   summary: string;
   publishedAt: string;
-}
-
-/**
- * Extract CDATA content from a string.
- * If the string contains a CDATA block, returns the content inside it.
- * Otherwise returns the original string.
- */
-function extractCdata(raw: string): string {
-  const cdataMatch = raw.match(/<!\[CDATA\[([\s\S]*?)\]\]>/);
-  return cdataMatch ? cdataMatch[1] : raw;
 }
 
 /**
