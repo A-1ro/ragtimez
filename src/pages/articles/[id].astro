@@ -3,6 +3,8 @@ import { getCollection, render } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { trustLabelMap } from "../../constants/trustLevels";
 import { formatDate } from "../../utils/date";
+import { computeArticleQualityFromData } from "../../lib/quality";
+import { env } from "cloudflare:workers";
 
 // Dynamic route: disable prerendering so the page is rendered on each request
 // at the Cloudflare Worker edge, enabling server-side article lookup by ID.
@@ -21,6 +23,41 @@ const { Content } = await render(article);
 
 const trust = trustLabelMap[article.data.trustLevel];
 const user = Astro.locals.user ?? null;
+
+// Fetch note count from D1 for quality scoring. Gracefully fall back to 0
+// when D1 is unavailable (e.g. local Astro dev without wrangler bindings).
+let noteCount = 0;
+try {
+  if (env.DB) {
+    const row = await env.DB.prepare(
+      "SELECT COUNT(*) AS cnt FROM notes WHERE article_slug = ?"
+    )
+      .bind(article.id)
+      .first<{ cnt: number }>();
+    noteCount = row?.cnt ?? 0;
+  }
+} catch {
+  // Non-fatal: DB unavailable in local dev
+}
+
+const quality = computeArticleQualityFromData(article.data, noteCount);
+
+// Grade badge colors — use CSS custom properties consistent with trust badges
+const gradeColor: Record<string, string> = {
+  A: "#22c55e",
+  B: "#3d8ef5",
+  C: "#f59e0b",
+  D: "#ef4444",
+};
+const qualityColor = gradeColor[quality.grade] ?? "#6b7db3";
+
+const qualityTooltip = [
+  `スコア: ${quality.score}/100`,
+  `ソース数: +${quality.breakdown.sources}`,
+  `公式ソース率: +${quality.breakdown.officialRatio}`,
+  `信頼度: +${quality.breakdown.trustLevel}`,
+  `コミュニティノート補正: -${quality.breakdown.notesPenalty}`,
+].join(" | ");
 ---
 
 <BaseLayout
@@ -41,6 +78,39 @@ const user = Astro.locals.user ?? null;
         >
           {trust.label}
         </span>
+        <details class="quality-details">
+          <summary
+            class="trust-badge quality-badge"
+            style={`background-color: ${qualityColor}22; color: ${qualityColor}; border-color: ${qualityColor}44; cursor: pointer; list-style: none;`}
+            title={qualityTooltip}
+          >
+            品質 {quality.grade} <span class="quality-score-num">{quality.score}</span>
+          </summary>
+          <div class="quality-breakdown" role="tooltip">
+            <dl class="breakdown-list">
+              <div class="breakdown-row">
+                <dt>ソース数</dt>
+                <dd>+{quality.breakdown.sources}</dd>
+              </div>
+              <div class="breakdown-row">
+                <dt>公式ソース率</dt>
+                <dd>+{quality.breakdown.officialRatio}</dd>
+              </div>
+              <div class="breakdown-row">
+                <dt>信頼度</dt>
+                <dd>+{quality.breakdown.trustLevel}</dd>
+              </div>
+              <div class="breakdown-row">
+                <dt>コミュニティノート補正</dt>
+                <dd>-{quality.breakdown.notesPenalty}</dd>
+              </div>
+              <div class="breakdown-row breakdown-total">
+                <dt>合計</dt>
+                <dd>{quality.score} / 100</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
       </div>
       <h1 class="article-title">{article.data.title}</h1>
       <p class="article-summary">{article.data.summary}</p>
@@ -164,6 +234,75 @@ const user = Astro.locals.user ?? null;
     font-weight: 600;
     border: 1px solid;
     white-space: nowrap;
+  }
+
+  /* Quality score badge */
+  .quality-details {
+    position: relative;
+    display: inline-block;
+  }
+
+  /* Hide the default disclosure triangle in all browsers */
+  .quality-badge::-webkit-details-marker {
+    display: none;
+  }
+
+  .quality-score-num {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+  }
+
+  .quality-breakdown {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    z-index: 20;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    min-width: 220px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    font-size: 0.8125rem;
+  }
+
+  .breakdown-list {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--color-muted);
+  }
+
+  .breakdown-row dt {
+    font-weight: 400;
+  }
+
+  .breakdown-row dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .breakdown-total {
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+
+  .breakdown-total dt,
+  .breakdown-total dd {
+    color: var(--color-text);
+    font-weight: 700;
   }
 
   .article-title {
