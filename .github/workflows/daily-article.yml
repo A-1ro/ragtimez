@@ -54,6 +54,7 @@ jobs:
             --max-time 60 || echo "RSS fetch warning: some feeds may have failed"
 
       - name: Generate article
+        id: generate
         env:
           GENERATE_ARTICLE_URL: ${{ secrets.GENERATE_ARTICLE_URL }}
           INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
@@ -68,12 +69,36 @@ jobs:
           if [ "$FORCE_FLAG" = "true" ]; then
             EXTRA_ARGS+=(--force)
           fi
-          BEFORE=$(ls src/content/articles/ 2>/dev/null | sort)
-          npm run generate:article -- ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
-          AFTER=$(ls src/content/articles/ 2>/dev/null | sort)
-          if [ "$BEFORE" = "$AFTER" ]; then
-            echo "No new article files generated. Exiting."
+
+          # --- Japanese article (required) ---
+          BEFORE_JA=$(ls src/content/articles/ 2>/dev/null | sort)
+          npm run generate:article -- --lang ja ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
+          AFTER_JA=$(ls src/content/articles/ 2>/dev/null | sort)
+          JA_NEW=$(comm -13 <(echo "$BEFORE_JA") <(echo "$AFTER_JA") | grep -v '\.en\.md$' | head -1 || true)
+          if [ -z "$JA_NEW" ]; then
+            echo "Error: Japanese article was not generated. Aborting."
             exit 1
+          fi
+          JA_ARTICLE_FILE="src/content/articles/${JA_NEW}"
+          echo "ja_article_file=${JA_ARTICLE_FILE}" >> $GITHUB_OUTPUT
+          echo "Generated ja: ${JA_ARTICLE_FILE}"
+
+          # --- English article (optional — failure is a warning, not a job failure) ---
+          BEFORE_EN=$(ls src/content/articles/ 2>/dev/null | sort)
+          if npm run generate:article -- --lang en ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; then
+            AFTER_EN=$(ls src/content/articles/ 2>/dev/null | sort)
+            EN_NEW=$(comm -13 <(echo "$BEFORE_EN") <(echo "$AFTER_EN") | grep '\.en\.md$' | head -1 || true)
+            if [ -n "$EN_NEW" ]; then
+              EN_ARTICLE_FILE="src/content/articles/${EN_NEW}"
+              echo "en_article_file=${EN_ARTICLE_FILE}" >> $GITHUB_OUTPUT
+              echo "Generated en: ${EN_ARTICLE_FILE}"
+            else
+              echo "Warning: English article generation succeeded but no new .en.md file found."
+              echo "en_article_file=" >> $GITHUB_OUTPUT
+            fi
+          else
+            echo "Warning: English article generation failed. Continuing with Japanese-only publish."
+            echo "en_article_file=" >> $GITHUB_OUTPUT
           fi
 
       - name: Commit and push generated article
@@ -88,18 +113,16 @@ jobs:
           else
             git commit -m "chore: add daily article $(TZ=Asia/Tokyo date +%Y-%m-%d)"
             git push origin HEAD
-            # Get the article filename (last generated file)
-            ARTICLE_FILE=$(ls -t src/content/articles/*.md 2>/dev/null | head -1 || true)
-            echo "article_file=${ARTICLE_FILE}" >> $GITHUB_OUTPUT
           fi
 
       - name: Send newsletter
-        if: steps.commit.outcome == 'success' && steps.commit.outputs.article_file != ''
+        # Newsletter is sent for the Japanese article only.
+        if: steps.commit.outcome == 'success' && steps.generate.outputs.ja_article_file != ''
         continue-on-error: true
         env:
           NEWSLETTER_SEND_URL: ${{ secrets.NEWSLETTER_SEND_URL }}
           INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
-          ARTICLE_FILE: ${{ steps.commit.outputs.article_file }}
+          ARTICLE_FILE: ${{ steps.generate.outputs.ja_article_file }}
         run: |
           if [ -z "$NEWSLETTER_SEND_URL" ] || [ -z "$ARTICLE_FILE" ] || [ ! -f "$ARTICLE_FILE" ]; then
             echo "Skipping newsletter: missing URL or article file"
@@ -110,8 +133,11 @@ jobs:
           TITLE=$(sed -n 's/^title: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
           SUMMARY=$(sed -n 's/^summary: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
 
-          # Extract slug from filename (e.g., 2026-04-11-article-slug.md -> 2026-04-11-article-slug)
-          SLUG=$(basename "$ARTICLE_FILE" .md)
+          # Extract slug from filename.
+          # Handles both YYYY-MM-DD.md and YYYY-MM-DD.en.md patterns.
+          FILENAME=$(basename "$ARTICLE_FILE")
+          SLUG="${FILENAME%.md}"
+          SLUG="${SLUG%.en}"
 
           if [ -z "$TITLE" ] || [ -z "$SUMMARY" ] || [ -z "$SLUG" ]; then
             echo "Skipping newsletter: incomplete article metadata"
@@ -134,41 +160,66 @@ jobs:
             --max-time 60 || echo "Newsletter send failed (continuing)"
 
       - name: Post to Bluesky
-        if: steps.commit.outcome == 'success' && steps.commit.outputs.article_file != ''
+        # Posts both Japanese and English articles when available.
+        if: steps.commit.outcome == 'success'
         continue-on-error: true
         env:
           BLUESKY_POST_URL: ${{ secrets.BLUESKY_POST_URL }}
           INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
-          ARTICLE_FILE: ${{ steps.commit.outputs.article_file }}
+          JA_ARTICLE_FILE: ${{ steps.generate.outputs.ja_article_file }}
+          EN_ARTICLE_FILE: ${{ steps.generate.outputs.en_article_file }}
         run: |
-          if [ -z "$BLUESKY_POST_URL" ] || [ -z "$ARTICLE_FILE" ] || [ ! -f "$ARTICLE_FILE" ]; then
-            echo "Skipping Bluesky post: missing URL or article file"
+          if [ -z "$BLUESKY_POST_URL" ]; then
+            echo "Skipping Bluesky post: BLUESKY_POST_URL not set"
             exit 0
           fi
 
-          # Extract article frontmatter using sed (remove leading/trailing quotes from YAML values)
-          TITLE=$(sed -n 's/^title: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
-          SUMMARY=$(sed -n 's/^summary: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
+          # Helper: post a single article to Bluesky.
+          # Usage: post_article <file_path> <lang>
+          post_article() {
+            local FILE="$1"
+            local LANG="$2"
 
-          # Extract slug from filename (e.g., 2026-04-11-article-slug.md -> 2026-04-11-article-slug)
-          SLUG=$(basename "$ARTICLE_FILE" .md)
+            if [ -z "$FILE" ] || [ ! -f "$FILE" ]; then
+              echo "Skipping Bluesky post (${LANG}): file not found: ${FILE}"
+              return 0
+            fi
 
-          if [ -z "$TITLE" ] || [ -z "$SUMMARY" ] || [ -z "$SLUG" ]; then
-            echo "Skipping Bluesky post: incomplete article metadata"
-            exit 0
-          fi
+            # Extract article frontmatter using sed (remove leading/trailing quotes from YAML values)
+            local TITLE
+            TITLE=$(sed -n 's/^title: "\(.*\)"$/\1/p' "$FILE" | head -1)
+            local SUMMARY
+            SUMMARY=$(sed -n 's/^summary: "\(.*\)"$/\1/p' "$FILE" | head -1)
 
-          echo "Posting to Bluesky for article: $SLUG"
+            # Extract slug from filename.
+            # Handles both YYYY-MM-DD.md and YYYY-MM-DD.en.md patterns.
+            local FILENAME
+            FILENAME=$(basename "$FILE")
+            local SLUG="${FILENAME%.md}"
+            SLUG="${SLUG%.en}"
 
-          # Build JSON payload safely using jq
-          PAYLOAD=$(jq -n \
-            --arg slug "$SLUG" \
-            --arg title "$TITLE" \
-            --arg summary "$SUMMARY" \
-            '{articleSlug: $slug, articleTitle: $title, articleSummary: $summary}')
+            if [ -z "$TITLE" ] || [ -z "$SUMMARY" ] || [ -z "$SLUG" ]; then
+              echo "Skipping Bluesky post (${LANG}): incomplete article metadata"
+              return 0
+            fi
 
-          curl -s -f -X POST "$BLUESKY_POST_URL" \
-            -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
-            -H "Content-Type: application/json" \
-            -d "$PAYLOAD" \
-            --max-time 60 || echo "Bluesky post failed (continuing)"
+            echo "Posting to Bluesky (${LANG}) for article: ${SLUG}"
+
+            # Build JSON payload safely using jq
+            local PAYLOAD
+            PAYLOAD=$(jq -n \
+              --arg slug "$SLUG" \
+              --arg title "$TITLE" \
+              --arg summary "$SUMMARY" \
+              --arg lang "$LANG" \
+              '{articleSlug: $slug, articleTitle: $title, articleSummary: $summary, lang: $lang}')
+
+            curl -s -f -X POST "$BLUESKY_POST_URL" \
+              -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+              -H "Content-Type: application/json" \
+              -d "$PAYLOAD" \
+              --max-time 60 || echo "Bluesky post (${LANG}) failed (continuing)"
+          }
+
+          post_article "$JA_ARTICLE_FILE" "ja"
+          post_article "$EN_ARTICLE_FILE" "en"

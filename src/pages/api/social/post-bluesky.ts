@@ -11,6 +11,8 @@ interface PostBlueskyRequest {
   articleSlug: string;
   articleTitle: string;
   articleSummary: string;
+  /** Article language. Defaults to "ja" for backward compatibility. */
+  lang?: "ja" | "en";
 }
 
 /**
@@ -26,7 +28,8 @@ interface PostBlueskyRequest {
  *   {
  *     "articleSlug": "2026-04-11-article-title",
  *     "articleTitle": "Article Title",
- *     "articleSummary": "Brief summary of the article..."
+ *     "articleSummary": "Brief summary of the article...",
+ *     "lang": "ja" | "en"   // optional, defaults to "ja"
  *   }
  *
  * Response (200):
@@ -77,7 +80,7 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  const { articleSlug, articleTitle, articleSummary } = body;
+  const { articleSlug, articleTitle, articleSummary, lang = "ja" } = body;
 
   if (
     !articleSlug ||
@@ -95,14 +98,22 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // Build article URL.
-  const articleUrl = new URL(
-    `/articles/${articleSlug}`,
-    env.SITE_URL
-  ).href;
+  // Validate lang parameter (lang field is optional; only ja/en are accepted).
+  if (lang !== "ja" && lang !== "en") {
+    return new Response(
+      JSON.stringify({ error: 'Invalid lang: must be "ja" or "en"' }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
 
-  // Build post text.
-  const ctaText = "📝 この記事に注釈を追加できます";
+  // Build article URL — English articles live under /en/articles/.
+  const articlePath = lang === "en" ? `/en/articles/${articleSlug}` : `/articles/${articleSlug}`;
+  const articleUrl = new URL(articlePath, env.SITE_URL).href;
+
+  // Build post text with language-specific CTA.
+  const ctaText = lang === "en"
+    ? "Read the full article on RAGtimeZ"
+    : "📝 この記事に注釈を追加できます";
   const postText = buildBlueskyPostText(
     articleTitle,
     articleSummary,
