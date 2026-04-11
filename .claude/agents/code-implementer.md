@@ -1,7 +1,7 @@
 ---
 name: code-implementer
 description: "Use this agent when you need to implement new features, write code from scratch, refactor existing code, or translate specifications and requirements into working code. This agent should be invoked whenever a concrete coding task needs to be executed.\\n\\nExamples:\\n<example>\\nContext: User wants to add a new API endpoint to the RAGtimeZ project.\\nuser: \"Add a new API endpoint /api/articles that returns a list of all published articles as JSON\"\\nassistant: \"I'll use the code-implementer agent to implement this new API endpoint.\"\\n<commentary>\\nSince the user is requesting a concrete implementation task, use the Agent tool to launch the code-implementer agent.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User wants to improve the article generation logic.\\nuser: \"Generate-articleのエンドポイントでエラーハンドリングを強化してほしい\"\\nassistant: \"コードを実装するエージェントを使って、エラーハンドリングの強化を実装します。\"\\n<commentary>\\nSince the user is requesting a code improvement task, use the Agent tool to launch the code-implementer agent to make the changes.\\n</commentary>\\n</example>\\n\\n<example>\\nContext: User needs a utility function added to the shared library.\\nuser: \"src/lib/にURLを正規化するユーティリティ関数を追加して\"\\nassistant: \"I'll invoke the code-implementer agent to write and integrate that utility function.\"\\n<commentary>\\nA concrete implementation task in an existing module — ideal for the code-implementer agent.\\n</commentary>\\n</example>"
-model: haiku
+model: sonnet
 memory: project
 tools: Read, Edit, Bash, Task, WebSearch
 ---

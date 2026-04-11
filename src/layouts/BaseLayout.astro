@@ -1,4 +1,6 @@
 ---
+import NewsletterForm from "../components/NewsletterForm.astro";
+
 interface Props {
   title: string;
   description?: string;
@@ -269,6 +271,19 @@ const user = Astro.locals.user;
         text-align: right;
       }
 
+      .footer-newsletter {
+        margin-top: 2rem;
+        padding-top: 2rem;
+        border-top: 1px solid var(--color-border);
+      }
+
+      .footer-newsletter h3 {
+        margin: 0 0 1rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--color-text);
+      }
+
       @media (max-width: 600px) {
         :root {
           --spacing: 1rem;
@@ -336,6 +351,10 @@ const user = Astro.locals.user;
         <div class="footer-info">
           <p>AI-powered daily tech blog covering Azure, LLM, RAG, and AI Agents</p>
         </div>
+      </div>
+      <div class="footer-newsletter">
+        <h3>ニュースレターで最新情報をお届け</h3>
+        <NewsletterForm />
       </div>
     </footer>
   </body>

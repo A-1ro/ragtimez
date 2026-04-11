@@ -1,0 +1,187 @@
+---
+/**
+ * NewsletterForm component
+ *
+ * Progressive enhancement form that works with or without JavaScript.
+ * With JS: uses fetch API for non-blocking submission.
+ * Without JS: falls back to native form submission.
+ */
+---
+
+<div class="newsletter-form-wrapper">
+  <form
+    id="newsletter-form"
+    action="/api/newsletter/subscribe"
+    method="post"
+    class="newsletter-form"
+  >
+    <div class="form-group">
+      <input
+        type="email"
+        name="email"
+        placeholder="メールアドレス"
+        required
+        class="email-input"
+        aria-label="メールアドレス"
+      />
+      <button type="submit" class="submit-btn">購読</button>
+    </div>
+    <div id="form-message" class="form-message" aria-live="polite"></div>
+  </form>
+</div>
+
+<style>
+  .newsletter-form-wrapper {
+    width: 100%;
+  }
+
+  .newsletter-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .form-group {
+    display: flex;
+    gap: 0.5rem;
+    align-items: stretch;
+  }
+
+  .email-input {
+    flex: 1;
+    padding: 0.625rem 0.875rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: rgba(13, 19, 48, 0.5);
+    color: var(--color-text);
+    font-size: 0.9375rem;
+    transition: border-color 0.2s, box-shadow 0.2s;
+  }
+
+  .email-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(61, 142, 245, 0.1);
+  }
+
+  .email-input::placeholder {
+    color: var(--color-muted);
+  }
+
+  .submit-btn {
+    padding: 0.625rem 1.25rem;
+    background: var(--color-accent);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.9375rem;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+    white-space: nowrap;
+  }
+
+  .submit-btn:hover {
+    background: var(--color-accent-hover);
+    box-shadow: 0 0 12px rgba(61, 142, 245, 0.3);
+  }
+
+  .submit-btn:active {
+    transform: scale(0.98);
+  }
+
+  .submit-btn:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .form-message {
+    font-size: 0.8125rem;
+    min-height: 1.2rem;
+    display: none;
+  }
+
+  .form-message.show {
+    display: block;
+  }
+
+  .form-message.success {
+    color: #22c55e;
+  }
+
+  .form-message.error {
+    color: #ef4444;
+  }
+
+  @media (max-width: 600px) {
+    .form-group {
+      flex-direction: column;
+    }
+
+    .submit-btn {
+      width: 100%;
+    }
+  }
+</style>
+
+<script>
+  const form = document.getElementById("newsletter-form") as HTMLFormElement;
+  const emailInput = form.querySelector("input[name='email']") as HTMLInputElement;
+  const submitBtn = form.querySelector("button[type='submit']") as HTMLButtonElement;
+  const messageEl = document.getElementById("form-message") as HTMLDivElement;
+
+  if (form) {
+    form.addEventListener("submit", async (e: SubmitEvent) => {
+      e.preventDefault();
+
+      const email = emailInput.value.trim();
+      if (!email) {
+        showMessage("メールアドレスを入力してください", "error");
+        return;
+      }
+
+      submitBtn.disabled = true;
+      submitBtn.textContent = "送信中...";
+
+      try {
+        const response = await fetch("/api/newsletter/subscribe", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ email }),
+        });
+
+        if (response.ok) {
+          showMessage(
+            "購読ありがとうございます！確認メールをお送りしました。",
+            "success"
+          );
+          emailInput.value = "";
+        } else {
+          const data = await response.json() as { error?: string };
+          showMessage(
+            data.error || "購読に失敗しました。もう一度お試しください。",
+            "error"
+          );
+        }
+      } catch {
+        showMessage(
+          "エラーが発生しました。もう一度お試しください。",
+          "error"
+        );
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = "購読";
+      }
+    });
+  }
+
+  function showMessage(text: string, type: "success" | "error"): void {
+    messageEl.textContent = text;
+    messageEl.className = `form-message show ${type}`;
+    setTimeout(() => {
+      messageEl.classList.remove("show");
+    }, 5000);
+  }
+</script>
