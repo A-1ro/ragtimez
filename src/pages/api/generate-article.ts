@@ -182,23 +182,86 @@ function extractText(response: unknown): string {
 }
 
 /**
+ * Interface for topic selection response from Step 0.
+ */
+interface TopicSelection {
+  topic: string;
+  reason: string;
+  indices: number[];
+}
+
+/**
  * Call the Workers AI LLM to generate an article from the research context.
- * Uses two separate calls to avoid embedding Markdown inside JSON:
+ * Uses three separate calls to implement the one-topic deep-dive approach:
+ *   0. Topic selection — choose the most technically interesting & actionable topic
  *   1. Metadata (title, summary, tags) — small JSON, reliable
- *   2. Body — plain Markdown, no JSON escaping needed
+ *   2. Body — plain Markdown, deep-dive focused
  */
 async function generateWithLLM(
-  context: string,
+  entries: RssEntry[],
   date: string,
   topics: string[],
-): Promise<{ title: string; summary: string; tags: string[]; body: string }> {
-  const topicLine = topics.join(", ");
-  const contextBlock = `Today is ${date}. Topics: ${topicLine}.\n\n${context}`;
-  // For metadata, pass only the raw news so the model derives title from actual content.
-  const newsOnly = `Today is ${date}.\n\n${context}`;
+): Promise<{ title: string; summary: string; tags: string[]; body: string; selectedTopic: string }> {
+  // --- Step 0: Topic selection ---
+  const contextForSelection = buildContext(entries);
+  const topicSelectionResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
+    LLM_MODEL,
+    {
+      messages: [
+        {
+          role: "system",
+          content:
+            "You are a senior software engineer selecting the best topic for a technical deep-dive blog post.\n" +
+            "Read these news items and identify ONE topic that:\n" +
+            "1. Has the most technical depth and substance\n" +
+            "2. Is most actionable/useful for working engineers\n" +
+            "3. Has enough information for a 1000-word deep dive\n\n" +
+            "Output ONLY valid JSON with exactly these keys:\n" +
+            '- "topic": English description of the chosen topic (1 sentence)\n' +
+            '- "reason": why this is the best topic for engineers (1 sentence)\n' +
+            '- "indices": array of 1-based entry numbers that are relevant to this topic\n' +
+            "Output only the JSON object, no markdown fences.",
+        },
+        { role: "user", content: contextForSelection },
+      ],
+      max_tokens: 256,
+      temperature: 0.3,
+    },
+  );
+
+  const topicSelectionRaw = extractText(topicSelectionResponse)
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  let topicSelection: TopicSelection;
+  try {
+    topicSelection = JSON.parse(topicSelectionRaw);
+  } catch {
+    // Fallback: if parsing fails, use all entries and extract indices from raw text
+    console.warn(`Topic selection parse failed, using fallback. Raw: ${topicSelectionRaw.slice(0, 200)}`);
+    topicSelection = {
+      topic: "Latest technical developments",
+      reason: "Using all provided entries as fallback",
+      indices: entries.map((_, i) => i + 1),
+    };
+  }
+
+  // Validate indices are within range and filter entries
+  const validIndices = topicSelection.indices.filter(
+    (idx) => typeof idx === "number" && idx >= 1 && idx <= entries.length,
+  );
+  const selectedEntries =
+    validIndices.length > 0
+      ? validIndices.map((idx) => entries[idx - 1])
+      : entries; // fallback to all if no valid indices
+
+  // Rebuild context with only selected entries
+  const context = buildContext(selectedEntries);
+  const contextBlock = `Today is ${date}.\n\n${context}`;
 
   // --- Step 1: metadata (title, summary, tags) ---
-  // Use key:value format instead of JSON to avoid model confusion.
+  // Use updated prompt for one-topic deep-dive approach
   const metaResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
     LLM_MODEL,
     {
@@ -206,14 +269,15 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            "You are a Japanese tech journalist. Read the news snippets and output ONLY valid JSON, no other text.\n" +
+            "You are a Japanese senior engineer writing a technical blog. " +
+            "Read the provided information about ONE specific topic and output ONLY valid JSON.\n" +
             "The JSON must have exactly these three keys:\n" +
-            '- "title": a specific, descriptive Japanese headline (20-50 chars) that summarizes the most important news. Do NOT use generic words like "AI" or "最新動向" alone.\n' +
-            '- "summary": 1-2 Japanese sentences explaining what happened and why it matters.\n' +
-            '- "tags": array of 3-5 specific English keywords (model names, company names, technologies).\n' +
+            '- "title": a specific, descriptive Japanese headline (20-50 chars) about this ONE topic. Avoid vague words like "最新動向" or "まとめ".\n' +
+            '- "summary": 2-3 Japanese sentences explaining WHAT changed, WHY it matters technically, and WHAT engineers should do about it.\n' +
+            '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies).\n' +
             "Output only the JSON object, no markdown fences.",
         },
-        { role: "user", content: newsOnly },
+        { role: "user", content: context },
       ],
       max_tokens: 256,
       temperature: 0.3,
@@ -250,7 +314,7 @@ async function generateWithLLM(
     throw new Error(`Metadata missing fields. Raw: ${metaRaw.slice(0, 300)}`);
   }
 
-  // --- Step 2: body (plain Markdown, no JSON) ---
+  // --- Step 2: body (plain Markdown, deep-dive focused) ---
   const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
     LLM_MODEL,
     {
@@ -258,10 +322,20 @@ async function generateWithLLM(
         {
           role: "system",
           content:
-            "You are a Japanese tech journalist. Write a comprehensive blog article in Japanese Markdown. " +
-            "Start directly with ## headings. Write 4-6 sections. Each section should be 4-6 sentences with enough detail to be informative. " +
-            "Cover news from ALL sources provided, including Azure, AWS, Google, OpenAI, and others — do not focus only on one company. " +
-            "End with a ## まとめ section summarizing key takeaways for developers. " +
+            "You are a Japanese senior software engineer writing a technical deep-dive blog post.\n" +
+            "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
+            "Write in Japanese Markdown, starting directly with ## headings.\n\n" +
+            "Structure the article as follows:\n" +
+            "1. ## 何が変わったのか (1-2 paragraphs: the specific change or release)\n" +
+            "2. ## 技術的な詳細 (2-3 paragraphs: how it works under the hood, API changes, architecture)\n" +
+            "3. ## エンジニアへの実践的な影響 (2-3 paragraphs: concrete examples, migration steps, code patterns where relevant)\n" +
+            "4. ## 注意点・制限事項 (1-2 paragraphs: limitations, caveats, what's NOT supported yet)\n" +
+            "5. ## まとめ (3-5 bullet points: actionable takeaways for engineers)\n\n" +
+            "Rules:\n" +
+            "- Each section must be substantive (4-8 sentences), not just a one-liner.\n" +
+            "- Mention specific version numbers, API names, model names, and benchmarks when available.\n" +
+            "- If you don't have enough technical detail on a point, say so rather than filling with fluff.\n" +
+            "- Do NOT turn this into a news roundup covering multiple companies or topics.\n" +
             "Output only the Markdown, nothing else.",
         },
         { role: "user", content: contextBlock },
@@ -274,7 +348,7 @@ async function generateWithLLM(
   const body = extractText(bodyResponse).trim();
   if (!body) throw new Error("LLM returned empty body");
 
-  return { ...meta, body };
+  return { ...meta, body, selectedTopic: topicSelection.topic };
 }
 
 /**
@@ -455,20 +529,16 @@ export const POST: APIRoute = async ({ request }) => {
   // in sync: the LLM only reads the entries it can reference.
   const contextEntries = allEntries.slice(0, MAX_CONTEXT_ENTRIES);
 
-  // --- Extract sources & trust level ----------------------------------------
-  const sources = extractSources(contextEntries);
-  const trustLevel = deriveTrustLevel(sources);
-
   // --- LLM generation -------------------------------------------------------
-  const context = buildContext(contextEntries);
   let llmResult: {
     title: string;
     summary: string;
     tags: string[];
     body: string;
+    selectedTopic: string;
   };
   try {
-    llmResult = await generateWithLLM(context, dateInput, topics);
+    llmResult = await generateWithLLM(contextEntries, dateInput, topics);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
@@ -478,6 +548,12 @@ export const POST: APIRoute = async ({ request }) => {
       { status: 502, headers: { "Content-Type": "application/json" } },
     );
   }
+
+  // --- Extract sources & trust level from selected topic entries -----------
+  // If topic selection was successful, sources reflect only relevant entries.
+  // If fallback was used, sources include all contextEntries.
+  const sources = extractSources(contextEntries);
+  const trustLevel = deriveTrustLevel(sources);
 
   // --- Assemble article -----------------------------------------------------
   const filename = `${dateInput}.md`;
