@@ -1,7 +1,7 @@
 ---
 import { getCollection } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { trustLabelMap } from "../../constants/trustLevels";
+import { getTrustLabel, getTrustColor } from "../../constants/trustLevels";
 import { formatDate } from "../../utils/date";
 import { t } from "../../lib/i18n";
 
@@ -28,7 +28,7 @@ const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "
       <p class="empty">{t(lang, "noArticles")}</p>
     )}
     {articles.map((article) => {
-      const trust = trustLabelMap[article.data.trustLevel];
+      const trustColor = getTrustColor(article.data.trustLevel);
       return (
         <article class="card">
           <a href={`/en/articles/${article.id}`} class="card-link">
@@ -38,9 +38,9 @@ const today = new Date().toLocaleDateString("en-US", { year: "numeric", month: "
               </time>
               <span
                 class="trust-badge"
-                style={`background-color: ${trust.color}22; color: ${trust.color}; border-color: ${trust.color}44;`}
+                style={`background-color: ${trustColor}22; color: ${trustColor}; border-color: ${trustColor}44;`}
               >
-                {trust.label}
+                {getTrustLabel(article.data.trustLevel, lang)}
               </span>
             </div>
             <h2 class="card-title">{article.data.title}</h2>

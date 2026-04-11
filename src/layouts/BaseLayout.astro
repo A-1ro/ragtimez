@@ -10,6 +10,8 @@ interface Props {
   ogType?: string;
   canonicalUrl?: string;
   lang?: Lang;
+  showLanguageSwitcher?: boolean;
+  showHreflang?: boolean;
 }
 
 const {
@@ -19,6 +21,8 @@ const {
   ogType = "website",
   canonicalUrl = Astro.url.href,
   lang = getLangFromPath(Astro.url.pathname),
+  showLanguageSwitcher = true,
+  showHreflang = true,
 } = Astro.props;
 
 const siteName = "RAGtimeZ";
@@ -44,9 +48,13 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     <meta property="og:locale" content={lang === "en" ? "en_US" : "ja_JP"} />
 
     <!-- hreflang: alternate language links -->
-    <link rel="alternate" hreflang="ja" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
-    <link rel="alternate" hreflang="en" href={new URL(localizePath(Astro.url.pathname, "en"), Astro.site ?? Astro.url.origin).href} />
-    <link rel="alternate" hreflang="x-default" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+    {showHreflang && (
+      <>
+        <link rel="alternate" hreflang="ja" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang="en" href={new URL(localizePath(Astro.url.pathname, "en"), Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang="x-default" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+      </>
+    )}
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -397,7 +405,7 @@ const isAdmin = Astro.locals.isAdmin ?? false;
             </svg>
             RSS
           </a>
-          <LanguageSwitcher currentLang={lang} />
+          {showLanguageSwitcher && <LanguageSwitcher currentLang={lang} />}
         </div>
         <div class="nav-auth">
           {user ? (

@@ -45,7 +45,7 @@ export function isLang(value: string): value is Lang {
 }
 
 export function getLangFromPath(pathname: string): Lang {
-  if (pathname.startsWith("/en")) {
+  if (pathname === "/en" || pathname.startsWith("/en/")) {
     return "en";
   }
   return "ja";
@@ -56,17 +56,15 @@ export function localizePath(path: string, lang: Lang): string {
 
   if (lang === "ja") {
     // Remove /en prefix if present
-    if (cleanPath.startsWith("/en/")) {
+    if (cleanPath === "/en" || cleanPath.startsWith("/en/")) {
+      if (cleanPath === "/en") return "/";
       return cleanPath.slice(3);
-    }
-    if (cleanPath === "/en") {
-      return "/";
     }
     return cleanPath;
   }
 
   // lang === "en"
-  if (cleanPath.startsWith("/en")) {
+  if (cleanPath === "/en" || cleanPath.startsWith("/en/")) {
     return cleanPath;
   }
   if (cleanPath === "/") {

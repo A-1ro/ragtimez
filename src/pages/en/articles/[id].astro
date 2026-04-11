@@ -1,7 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import BaseLayout from "../../../layouts/BaseLayout.astro";
-import { trustLabelMap } from "../../../constants/trustLevels";
+import { getTrustLabel, getTrustColor } from "../../../constants/trustLevels";
 import { formatDate } from "../../../utils/date";
 import { computeArticleQualityFromData } from "../../../lib/quality";
 import { env } from "cloudflare:workers";
@@ -20,7 +20,7 @@ if (!article) {
 
 const { Content } = await render(article);
 
-const trust = trustLabelMap[article.data.trustLevel];
+const trustColor = getTrustColor(article.data.trustLevel);
 const user = Astro.locals.user ?? null;
 
 let noteCount = 0;
@@ -66,6 +66,8 @@ const qualityTooltip = [
   description={article.data.summary}
   ogType="article"
   lang="en"
+  showLanguageSwitcher={false}
+  showHreflang={false}
 >
   <article class="article">
     <header class="article-header">
@@ -76,9 +78,9 @@ const qualityTooltip = [
         </time>
         <span
           class="trust-badge"
-          style={`background-color: ${trust.color}22; color: ${trust.color}; border-color: ${trust.color}44;`}
+          style={`background-color: ${trustColor}22; color: ${trustColor}; border-color: ${trustColor}44;`}
         >
-          {trust.label}
+          {getTrustLabel(article.data.trustLevel, lang)}
         </span>
         <details class="quality-details">
           <summary
@@ -608,6 +610,15 @@ const qualityTooltip = [
 </style>
 
 <script>
+  interface Note {
+    id: string;
+    body: string;
+    author_username: string;
+    author_avatar: string;
+    helpful_count: number;
+    viewer_has_voted: boolean;
+    created_at: string;
+  }
 
   const notesList = document.getElementById("notes-list");
   const noteForm = document.getElementById("note-form") as HTMLFormElement | null;
@@ -619,25 +630,33 @@ const qualityTooltip = [
   const articleId = notesSection?.dataset.articleId;
   const currentGithubId = notesSection?.dataset.currentGithubId;
 
+  // Escape HTML special characters to prevent XSS
+  function escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return text.replace(/[&<>"']/g, (char) => map[char]);
+  }
+
   async function loadNotes(sort: "new" | "helpful" = "new"): Promise<void> {
     if (!notesList || !articleId) return;
 
     notesList.innerHTML = '<div class="loading-state">Loading…</div>';
 
     try {
-      const response = await fetch(`/api/notes/${articleId}?sort=${sort}`);
+      const url = `/api/notes?article=${encodeURIComponent(articleId)}&sort=${encodeURIComponent(sort)}`;
+      const response = await fetch(url);
 
       if (!response.ok) {
         throw new Error("Failed to load notes");
       }
 
-      const notes = await response.json() as Array<{
-        id: string;
-        body: string;
-        author: { login: string; avatarUrl: string };
-        helpful: number;
-        userFound: boolean;
-      }>;
+      const data = (await response.json()) as { notes: Note[] };
+      const notes = data.notes || [];
 
       if (notes.length === 0) {
         notesList.innerHTML = '<p style="color: var(--color-muted); text-align: center; padding: 2rem 0;">No notes yet. Be the first to add one!</p>';
@@ -649,13 +668,14 @@ const qualityTooltip = [
           (note) => `
         <div class="note-item">
           <div class="note-header">
-            <img src="${note.author.avatarUrl}" alt="${note.author.login}" class="note-avatar" width="24" height="24" />
-            <span class="note-author">${note.author.login}</span>
+            <img src="${escapeHtml(note.author_avatar)}" alt="${escapeHtml(note.author_username)}" class="note-avatar" width="24" height="24" />
+            <span class="note-author">${escapeHtml(note.author_username)}</span>
+            <span class="note-date">${escapeHtml(new Date(note.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }))}</span>
           </div>
-          <p class="note-body">${note.body}</p>
+          <p class="note-body">${escapeHtml(note.body)}</p>
           <div class="note-footer">
-            <button class="helpful-btn" data-note-id="${note.id}" ${currentGithubId && note.userFound ? "disabled" : ""}>
-              Helpful (${note.helpful})
+            <button class="helpful-btn" data-note-id="${escapeHtml(note.id)}" aria-pressed="${note.viewer_has_voted}">
+              Helpful (${note.helpful_count})
             </button>
           </div>
         </div>
@@ -670,7 +690,7 @@ const qualityTooltip = [
           if (!noteId || !articleId) return;
 
           try {
-            const response = await fetch(`/api/notes/${articleId}/${noteId}/helpful`, {
+            const response = await fetch(`/api/notes/${encodeURIComponent(noteId)}/helpful`, {
               method: "POST",
             });
 
@@ -708,10 +728,10 @@ const qualityTooltip = [
       submitBtn.textContent = "Posting…";
 
       try {
-        const response = await fetch(`/api/notes/${articleId}`, {
+        const response = await fetch("/api/notes", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ body }),
+          body: JSON.stringify({ article_slug: articleId, body }),
         });
 
         if (response.ok) {
@@ -719,8 +739,8 @@ const qualityTooltip = [
           charCount.textContent = "0 / 1000";
           await loadNotes(sortSelect?.value as "new" | "helpful" || "new");
         } else {
-          const data = await response.json() as { error?: string };
-          alert(data.error || "Failed to post note.");
+          const error = await response.text();
+          alert(error || "Failed to post note.");
         }
       } catch (err) {
         console.error("Failed to post note:", err);
