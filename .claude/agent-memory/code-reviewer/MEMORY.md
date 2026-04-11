@@ -1,2 +1,3 @@
 - [RSS Feed Implementation (Issue #10)](project_rss_issue10.md) — PR #34: content field absent from RSS items; site URL hardcoded to ragtimez.pages.dev
 - [HTML Escaping Pattern in newsletter.ts](pattern_html_escaping.md) — escapeHtml applied in generateArticleEmailHtml but missing in generateConfirmationEmailHtml; approved in PR #42
+- [Query Parameter Token Auth Anti-Pattern](pattern_query_token_auth.md) — INTERNAL_API_TOKEN must only be accepted via Authorization header, never ?token= query param

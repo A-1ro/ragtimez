@@ -3,7 +3,7 @@
  * Admin quality trends dashboard — /admin/quality
  *
  * Auth-gated: requires a valid Bearer token matching INTERNAL_API_TOKEN.
- * Access: Authorization: Bearer <token>  OR  ?token=<token> query parameter
+ * Access: Authorization: Bearer <token>  (header only — never via query param)
  *
  * Renders:
  *   - Summary stats (average score, count per grade)
@@ -19,14 +19,14 @@ import { env } from "cloudflare:workers";
 export const prerender = false;
 
 // ---------------------------------------------------------------------------
-// Auth check — accept Bearer header or ?token= query param
+// Auth check — Authorization: Bearer <token> header only.
+// Query-parameter tokens are intentionally not supported: they appear in
+// Cloudflare access logs and browser history in plain text.
 // ---------------------------------------------------------------------------
 const authHeader = Astro.request.headers.get("authorization") ?? "";
-const bearerToken = authHeader.startsWith("Bearer ")
+const providedToken = authHeader.startsWith("Bearer ")
   ? authHeader.slice("Bearer ".length).trim()
-  : null;
-const queryToken = new URL(Astro.request.url).searchParams.get("token") ?? null;
-const providedToken = bearerToken ?? queryToken ?? "";
+  : "";
 
 const serverToken = env.INTERNAL_API_TOKEN ?? "";
 const authorized =
@@ -122,7 +122,7 @@ for (const r of rows) {
 // Bar chart data — up to the 30 most recent articles (oldest → newest for
 // left-to-right chronological display)
 // ---------------------------------------------------------------------------
-const chartRows = [...rows].reverse().slice(-30);
+const chartRows = rows.slice(0, 30).reverse();
 
 // Grade badge colour helper (must be a plain JS function, not TS const map,
 // so Astro can evaluate it in the template without import issues)

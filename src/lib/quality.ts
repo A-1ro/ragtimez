@@ -143,7 +143,7 @@ export function computeQualityScore(inputs: QualityInputs): QualityScore {
  */
 export function computeArticleQualityFromData(
   article: {
-    sources: Array<{ type?: string }>;
+    sources: Array<{ type?: "official" | "blog" | "other" }>;
     trustLevel: "official" | "blog" | "speculative";
   },
   noteCount?: number

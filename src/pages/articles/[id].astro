@@ -51,12 +51,18 @@ const gradeColor: Record<string, string> = {
 };
 const qualityColor = gradeColor[quality.grade] ?? "#6b7db3";
 
+// Format the notes penalty as "-N" only when N > 0; show "0" when there is no penalty.
+const notesPenaltyDisplay =
+  quality.breakdown.notesPenalty > 0
+    ? `-${quality.breakdown.notesPenalty}`
+    : "0";
+
 const qualityTooltip = [
   `スコア: ${quality.score}/100`,
   `ソース数: +${quality.breakdown.sources}`,
   `公式ソース率: +${quality.breakdown.officialRatio}`,
   `信頼度: +${quality.breakdown.trustLevel}`,
-  `コミュニティノート補正: -${quality.breakdown.notesPenalty}`,
+  `コミュニティノート補正: ${notesPenaltyDisplay}`,
 ].join(" | ");
 ---
 
@@ -86,7 +92,7 @@ const qualityTooltip = [
           >
             品質 {quality.grade} <span class="quality-score-num">{quality.score}</span>
           </summary>
-          <div class="quality-breakdown" role="tooltip">
+          <div class="quality-breakdown">
             <dl class="breakdown-list">
               <div class="breakdown-row">
                 <dt>ソース数</dt>
@@ -102,7 +108,7 @@ const qualityTooltip = [
               </div>
               <div class="breakdown-row">
                 <dt>コミュニティノート補正</dt>
-                <dd>-{quality.breakdown.notesPenalty}</dd>
+                <dd>{notesPenaltyDisplay}</dd>
               </div>
               <div class="breakdown-row breakdown-total">
                 <dt>合計</dt>
