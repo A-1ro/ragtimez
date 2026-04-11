@@ -2,3 +2,4 @@
 - [HTML Escaping Pattern in newsletter.ts](pattern_html_escaping.md) — escapeHtml applied in generateArticleEmailHtml but missing in generateConfirmationEmailHtml; approved in PR #42
 - [Query Parameter Token Auth Anti-Pattern](pattern_query_token_auth.md) — INTERNAL_API_TOKEN must only be accepted via Authorization header, never ?token= query param
 - [Admin Session Auth Pattern (PR #52)](pattern_admin_session_auth.md) — Bearer + GitHub OAuth 二経路認証パターンと ADMIN_GITHUB_IDS 未設定時のエッジケース
+- [Bluesky Error Response Sanitization (PR #56)](pattern_bluesky_error_handling.md) — 外部APIのエラーメッセージをそのままレスポンスに返さない; console.errorでサーバーサイドログに留める
