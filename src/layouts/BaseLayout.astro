@@ -49,6 +49,11 @@ const hreflangOtherPath =
     ? alternateLangHref
     : localizePath(Astro.url.pathname, otherLang);
 const hreflangCurrentPath = localizePath(Astro.url.pathname, lang);
+// x-default should always point to the ja canonical URL.
+// When lang === "ja", hreflangCurrentPath IS the ja path.
+// When lang === "en", hreflangOtherPath holds the ja counterpart URL
+// (either the explicit alternateLangHref override or localizePath(..., "ja")).
+const hreflangJaPath = lang === "ja" ? hreflangCurrentPath : hreflangOtherPath;
 
 const siteName = "RAGtimeZ";
 const user = Astro.locals.user;
@@ -77,7 +82,7 @@ const isAdmin = Astro.locals.isAdmin ?? false;
       <>
         <link rel="alternate" hreflang={lang} href={new URL(hreflangCurrentPath, Astro.site ?? Astro.url.origin).href} />
         <link rel="alternate" hreflang={otherLang} href={new URL(hreflangOtherPath, Astro.site ?? Astro.url.origin).href} />
-        <link rel="alternate" hreflang="x-default" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang="x-default" href={new URL(hreflangJaPath, Astro.site ?? Astro.url.origin).href} />
       </>
     )}
 
