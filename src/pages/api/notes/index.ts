@@ -2,9 +2,11 @@ import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 
 /**
- * Note object returned from the API
+ * Note object returned from the API.
+ * `author_note_count` is the total number of notes the author has posted
+ * across all articles, used to compute contributor badges on the client.
  */
-interface Note {
+export interface Note {
   id: string;
   article_slug: string;
   author_github_id: string;
@@ -13,12 +15,17 @@ interface Note {
   body: string;
   created_at: string;
   updated_at: string;
+  /** Total notes posted by this author (for contributor badge rendering). */
+  author_note_count: number;
 }
 
 /**
  * GET /api/notes?article=<slug>
  *
- * Retrieves all community notes for an article, ordered by creation date (newest first).
+ * Retrieves all community notes for an article, ordered by creation date
+ * (newest first).  Each note includes `author_note_count` — the total number
+ * of notes that author has posted across all articles — so the client can
+ * render contributor badges without an extra round-trip.
  *
  * Query parameters:
  *   article  – required – article slug
@@ -49,11 +56,21 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
+    // LEFT JOIN a per-author count subquery so that each note row carries the
+    // author's total note count.  COALESCE guards against the (impossible in
+    // practice) case where the subquery produces no row for an author.
     const result = await env.DB.prepare(
-      `SELECT id, article_slug, author_github_id, author_username, author_avatar, body, created_at, updated_at
-       FROM notes
-       WHERE article_slug = ?
-       ORDER BY created_at DESC`
+      `SELECT n.id, n.article_slug, n.author_github_id, n.author_username, n.author_avatar,
+              n.body, n.created_at, n.updated_at,
+              COALESCE(c.cnt, 0) AS author_note_count
+       FROM notes n
+       LEFT JOIN (
+         SELECT author_github_id, COUNT(*) AS cnt
+         FROM notes
+         GROUP BY author_github_id
+       ) c ON c.author_github_id = n.author_github_id
+       WHERE n.article_slug = ?
+       ORDER BY n.created_at DESC`
     )
       .bind(articleSlug)
       .all();
@@ -89,6 +106,10 @@ export const GET: APIRoute = async ({ request }) => {
  *
  * Response (201):
  *   { note: Note }
+ *
+ * The returned note includes `author_note_count` reflecting the author's
+ * updated total (including this new note) so the client can immediately
+ * show the correct contributor badge.
  *
  * Error responses:
  *   400  – invalid request body or validation error
@@ -157,7 +178,6 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
   try {
     // Extract user info from session – locals.user comes from middleware.ts
-    // The user object has { githubId, login, avatarUrl } from session.ts
     const githubId = locals.user.githubId;
     const username = locals.user.login;
     const avatarUrl = locals.user.avatarUrl || null;
@@ -165,12 +185,21 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const noteId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Upsert user record
+    // Upsert user record (preserving created_at and profile columns)
     await env.DB.prepare(
-      `INSERT OR REPLACE INTO users (github_id, username, avatar_url, created_at)
-       VALUES (?, ?, ?, COALESCE((SELECT created_at FROM users WHERE github_id = ?), datetime('now')))`
+      `INSERT OR REPLACE INTO users (github_id, username, avatar_url, github_url, x_url, linkedin_url, bio, created_at)
+       VALUES (
+         ?,
+         ?,
+         ?,
+         COALESCE((SELECT github_url   FROM users WHERE github_id = ?), NULL),
+         COALESCE((SELECT x_url        FROM users WHERE github_id = ?), NULL),
+         COALESCE((SELECT linkedin_url FROM users WHERE github_id = ?), NULL),
+         COALESCE((SELECT bio          FROM users WHERE github_id = ?), NULL),
+         COALESCE((SELECT created_at   FROM users WHERE github_id = ?), datetime('now'))
+       )`
     )
-      .bind(githubId, username, avatarUrl, githubId)
+      .bind(githubId, username, avatarUrl, githubId, githubId, githubId, githubId, githubId)
       .run();
 
     // Insert note
@@ -181,6 +210,15 @@ export const POST: APIRoute = async ({ request, locals }) => {
       .bind(noteId, articleSlug, githubId, username, avatarUrl, noteBody, now, now)
       .run();
 
+    // Fetch the author's updated total note count (includes the note just inserted).
+    const countRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM notes WHERE author_github_id = ?`
+    )
+      .bind(githubId)
+      .first<{ cnt: number }>();
+
+    const authorNoteCount = countRow?.cnt ?? 1;
+
     const note: Note = {
       id: noteId,
       article_slug: articleSlug,
@@ -190,6 +228,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       body: noteBody,
       created_at: now,
       updated_at: now,
+      author_note_count: authorNoteCount,
     };
 
     return new Response(
