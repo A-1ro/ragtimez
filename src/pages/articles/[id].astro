@@ -399,6 +399,24 @@ const user = Astro.locals.user ?? null;
   :global(.note-username) {
     font-weight: 600;
     color: var(--color-text);
+    text-decoration: none;
+    transition: color 0.15s;
+  }
+
+  :global(.note-username:hover) {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
+  }
+
+  :global(.contributor-badge) {
+    display: inline-block;
+    padding: 0.15em 0.5em;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
+    vertical-align: middle;
   }
 
   :global(.note-date) {
@@ -648,6 +666,33 @@ const user = Astro.locals.user ?? null;
     body: string;
     created_at: string;
     updated_at: string;
+    /** Total notes posted by this author — used to render contributor badges. */
+    author_note_count: number;
+  }
+
+  // ---------------------------------------------------------------------------
+  // Contributor rank logic — inlined for browser execution (kept in sync with
+  // src/lib/contributorBadge.ts).  Rules: 0→none, 1-4→bronze, 5-19→silver, 20+→gold
+  // ---------------------------------------------------------------------------
+  type ContributorRank = "none" | "bronze" | "silver" | "gold";
+
+  function getContributorRank(noteCount: number): ContributorRank {
+    if (noteCount >= 20) return "gold";
+    if (noteCount >= 5)  return "silver";
+    if (noteCount >= 1)  return "bronze";
+    return "none";
+  }
+
+  interface BadgeInfo { label: string; color: string }
+
+  function getContributorBadgeInfo(noteCount: number): BadgeInfo | null {
+    const rank = getContributorRank(noteCount);
+    const map: Record<Exclude<ContributorRank, "none">, BadgeInfo> = {
+      gold:   { label: "Contributor (Gold)",   color: "#ffd700" },
+      silver: { label: "Contributor (Silver)", color: "#c0c0c0" },
+      bronze: { label: "Contributor (Bronze)", color: "#cd7f32" },
+    };
+    return rank === "none" ? null : map[rank];
   }
 
   // Get data attributes from the section
@@ -697,12 +742,19 @@ const user = Astro.locals.user ?? null;
           </button>`
         : "";
 
+    // Build contributor badge HTML (if the author has earned a rank).
+    const badgeInfo = getContributorBadgeInfo(note.author_note_count);
+    const badgeHtml = badgeInfo
+      ? `<span class="contributor-badge" style="background-color:${badgeInfo.color}22;color:${badgeInfo.color};border-color:${badgeInfo.color}44;">${escapeHtml(badgeInfo.label)}</span>`
+      : "";
+
     div.innerHTML = `
       ${avatarHtml}
       <div class="note-content">
         <div class="note-header">
           <div class="note-meta">
-            <span class="note-username">${escapeHtml(note.author_username)}</span>
+            <a href="/profile/${escapeHtml(note.author_username)}" class="note-username">${escapeHtml(note.author_username)}</a>
+            ${badgeHtml}
             <span class="note-date">${formatRelativeTime(note.created_at)}</span>
           </div>
           ${deleteButtonHtml}
