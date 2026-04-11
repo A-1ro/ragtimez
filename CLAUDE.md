@@ -50,6 +50,8 @@ User Browser
 | `NEWSLETTER_FROM_EMAIL` | `string` | Sender email address (must be verified in Resend) |
 | `SITE_URL` | `string` | Site URL for building unsubscribe/article links |
 | `ADMIN_GITHUB_IDS` | `string` (optional) | Comma-separated list of GitHub numeric IDs allowed to access `/admin/quality` via browser session; unset disables session-based access |
+| `BLUESKY_IDENTIFIER` | `string` (optional) | Bluesky handle (e.g., `ragtimez.bsky.social`); unset skips Bluesky posting |
+| `BLUESKY_APP_PASSWORD` | `string` (optional) | Bluesky App Password (from https://bsky.app/settings/app-passwords); unset skips Bluesky posting |
 
 In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only works in production or via `wrangler pages dev` with remote bindings.
 
@@ -60,10 +62,12 @@ In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only wo
   - `search.ts` — AI Search query endpoint (timing-safe Bearer token auth)
   - `generate-article.ts` — Article generation: queries AI Search → calls Workers AI LLM → writes Markdown
   - `newsletter/{subscribe,unsubscribe,send}.ts` — Newsletter subscription and delivery
+  - `social/post-bluesky.ts` — Bluesky auto-posting endpoint (AT Protocol)
 - **`src/lib/`** — Shared server utilities
   - `auth.ts` — Timing-safe string comparison
   - `session.ts` — KV-backed session CRUD + CSRF state management
   - `newsletter.ts` — Newsletter subscription, Resend email, and HTML template utilities
+  - `bluesky.ts` — Bluesky (AT Protocol) session and post creation utilities
 - **`src/middleware.ts`** — Session loading on every request; attaches `user` to `Astro.locals`
 - **`src/content/articles/`** — Auto-generated Markdown files (committed by GitHub Actions bot)
 - **`src/constants/crawlTargets.ts`** — 10 sites crawled daily (Azure, OpenAI, Anthropic, etc.)
@@ -86,7 +90,7 @@ In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only wo
 
 ### GitHub Actions
 
-- **`daily-article.yml`** — Runs at 21:00 UTC (06:00 JST). Calls `POST /api/generate-article`, commits any generated Markdown files as a bot, then sends newsletter email to all subscribers. Requires secrets: `GENERATE_ARTICLE_URL`, `NEWSLETTER_SEND_URL`, `INTERNAL_API_TOKEN`.
+- **`daily-article.yml`** — Runs at 21:00 UTC (06:00 JST). Calls `POST /api/generate-article`, commits any generated Markdown files as a bot, sends newsletter email to all subscribers, and posts to Bluesky. Requires secrets: `GENERATE_ARTICLE_URL`, `NEWSLETTER_SEND_URL`, `BLUESKY_POST_URL` (optional), `INTERNAL_API_TOKEN`.
 - **`check-placeholders.yml`** — Blocks PRs containing `REPLACE_WITH_YOUR_*` strings in config files.
 
 ### Development Notes
@@ -164,3 +168,59 @@ npm run pages:dev
 3. Cloudflare Pages automatically deploys
 4. GitHub Actions `daily-article.yml` will now send newsletters on schedule
 5. Monitor Resend dashboard for delivery metrics and bounces
+
+## Bluesky Auto-Posting Setup
+
+### 1. Create Bluesky Account & App Password
+
+1. Sign up at [https://bsky.app](https://bsky.app)
+2. Go to **Settings** → **App passwords** (https://bsky.app/settings/app-passwords)
+3. Create a new app password with a name like "RAGtimeZ"
+4. Save the app password securely (it's displayed only once)
+
+### 2. Set Cloudflare Pages Secrets
+
+In the Cloudflare dashboard, add these secrets for the Pages project:
+
+```
+BLUESKY_IDENTIFIER=your_handle.bsky.social
+BLUESKY_APP_PASSWORD=<your-app-password>
+```
+
+For local testing with `wrangler pages dev`, add to `.env.local`:
+
+```env
+BLUESKY_IDENTIFIER=your_handle.bsky.social
+BLUESKY_APP_PASSWORD=<your-app-password>
+```
+
+### 3. Set GitHub Actions Secret
+
+Add a new secret to the repository:
+
+```
+BLUESKY_POST_URL=https://ragtimez.dev/api/social/post-bluesky
+```
+
+### 4. Test Locally
+
+```bash
+npm run pages:dev
+# The daily-article.yml workflow will call the endpoint after generating an article
+# Or manually test with:
+curl -X POST http://localhost:3000/api/social/post-bluesky \
+  -H "Authorization: Bearer your_internal_api_token" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "articleSlug": "2026-04-11-test",
+    "articleTitle": "Test Article",
+    "articleSummary": "This is a test article."
+  }'
+```
+
+### 5. Deploy & Monitor
+
+1. Push credentials to Cloudflare Pages (secrets)
+2. Add `BLUESKY_POST_URL` to GitHub Actions secrets (or leave unset to skip Bluesky posting)
+3. On next scheduled article generation, the workflow will post to Bluesky
+4. Check your Bluesky feed to verify posts appear with article links and metadata
