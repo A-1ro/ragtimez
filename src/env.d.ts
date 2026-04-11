@@ -64,6 +64,17 @@ declare namespace Cloudflare {
      * Example: https://ragtimez.dev
      */
     SITE_URL: string;
+    /**
+     * Comma-separated list of GitHub numeric user IDs allowed to access
+     * /admin/quality via browser session (GitHub OAuth).
+     *
+     * Optional — when unset, browser session auth is disabled and only the
+     * Bearer token (INTERNAL_API_TOKEN) grants access.
+     *
+     * Set via: wrangler pages secret put ADMIN_GITHUB_IDS
+     * Example value: "12345,67890"
+     */
+    ADMIN_GITHUB_IDS?: string;
   }
 }
 

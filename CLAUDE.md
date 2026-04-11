@@ -49,6 +49,7 @@ User Browser
 | `RESEND_API_KEY` | `string` | Resend API key for email sending |
 | `NEWSLETTER_FROM_EMAIL` | `string` | Sender email address (must be verified in Resend) |
 | `SITE_URL` | `string` | Site URL for building unsubscribe/article links |
+| `ADMIN_GITHUB_IDS` | `string` (optional) | Comma-separated list of GitHub numeric IDs allowed to access `/admin/quality` via browser session; unset disables session-based access |
 
 In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only works in production or via `wrangler pages dev` with remote bindings.
 

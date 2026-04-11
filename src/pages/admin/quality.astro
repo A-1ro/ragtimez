@@ -2,8 +2,21 @@
 /**
  * Admin quality trends dashboard — /admin/quality
  *
- * Auth-gated: requires a valid Bearer token matching INTERNAL_API_TOKEN.
- * Access: Authorization: Bearer <token>  (header only — never via query param)
+ * Auth-gated: two accepted auth paths:
+ *   1. Bearer token  — Authorization: Bearer <INTERNAL_API_TOKEN> header
+ *      (curl / CI use-case; token must never appear in a query param)
+ *   2. Browser session — logged-in GitHub user whose numeric ID appears in the
+ *      ADMIN_GITHUB_IDS environment variable (comma-separated, e.g. "12345,67890")
+ *
+ * Decision tree:
+ *   - Valid Bearer token                          → 200 (serve page)
+ *   - Session user present + ID in whitelist      → 200 (serve page)
+ *   - No session AND no Bearer header             → 302 → /api/auth/login
+ *   - Session user NOT in whitelist               → 401 JSON
+ *   - Bearer header present but token wrong       → 401 JSON
+ *
+ * Redirect target is always the fixed path /api/auth/login to prevent
+ * open-redirect attacks — no dynamic parameter is accepted.
  *
  * Renders:
  *   - Summary stats (average score, count per grade)
@@ -19,9 +32,17 @@ import { env } from "cloudflare:workers";
 export const prerender = false;
 
 // ---------------------------------------------------------------------------
-// Auth check — Authorization: Bearer <token> header only.
-// Query-parameter tokens are intentionally not supported: they appear in
-// Cloudflare access logs and browser history in plain text.
+// Helper: parse ADMIN_GITHUB_IDS into a Set<string> for O(1) membership test.
+// Returns an empty Set when the binding is absent/empty, which disables
+// whitelist-based browser access.
+// ---------------------------------------------------------------------------
+function parseAdminIds(raw: string | undefined): Set<string> {
+  if (!raw) return new Set();
+  return new Set(raw.split(",").map((s) => s.trim()).filter(Boolean));
+}
+
+// ---------------------------------------------------------------------------
+// Auth check
 // ---------------------------------------------------------------------------
 const authHeader = Astro.request.headers.get("authorization") ?? "";
 const providedToken = authHeader.startsWith("Bearer ")
@@ -29,10 +50,27 @@ const providedToken = authHeader.startsWith("Bearer ")
   : "";
 
 const serverToken = env.INTERNAL_API_TOKEN ?? "";
-const authorized =
+const bearerAuthorized =
   serverToken.length > 0 && timingSafeEqual(providedToken, serverToken);
 
+const adminIds = parseAdminIds(env.ADMIN_GITHUB_IDS);
+const sessionUser = Astro.locals.user;
+const sessionAuthorized =
+  sessionUser !== undefined && adminIds.size > 0 && adminIds.has(sessionUser.githubId);
+
+const authorized = bearerAuthorized || sessionAuthorized;
+
 if (!authorized) {
+  // Unauthenticated browser visit (no session cookie, no Bearer header):
+  // redirect to GitHub OAuth login so the user can authenticate.
+  const hasBearerAttempt = providedToken.length > 0;
+  const hasSession = sessionUser !== undefined;
+  if (!hasBearerAttempt && !hasSession) {
+    return Astro.redirect("/api/auth/login", 302);
+  }
+
+  // Either the Bearer token was wrong, or the user is logged in but not in
+  // the admin whitelist — return 401 with a JSON body in both cases.
   return new Response(
     JSON.stringify({ error: "Unauthorized" }),
     {
