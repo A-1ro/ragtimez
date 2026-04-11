@@ -17,12 +17,14 @@
  *   npm run generate:article -- --date 2026-04-08
  *   npm run generate:article -- --date 2026-04-08 --force
  *   npm run generate:article -- --topics "OpenAI news" "Azure AI updates"
+ *   npm run generate:article -- --lang en
  *
  * Options
  *   --date    YYYY-MM-DD   Article date (default: today UTC)
  *   --force               Overwrite existing file
  *   --topics  ...strings  One or more search topics (space-separated)
  *   --limit   number      AI Search results per topic (default 5)
+ *   --lang    ja|en       Article language (default: ja)
  */
 
 import { writeFileSync, existsSync } from "node:fs";
@@ -71,12 +73,18 @@ const forceOverwrite = args.includes("--force");
 const dateArg = getFlag("--date");
 const limitArg = getFlag("--limit");
 const topicsArg = getFlagAll("--topics");
+const langArg = getFlag("--lang") ?? "ja";
 
 const today = new Date().toISOString().slice(0, 10);
 const articleDate = dateArg ?? today;
 
 if (!/^\d{4}-\d{2}-\d{2}$/.test(articleDate)) {
   console.error(`Error: --date must be in YYYY-MM-DD format, got: ${articleDate}`);
+  process.exit(1);
+}
+
+if (langArg !== "ja" && langArg !== "en") {
+  console.error(`Error: --lang must be "ja" or "en", got: ${langArg}`);
   process.exit(1);
 }
 
@@ -118,7 +126,7 @@ interface GeneratedArticle {
   metadata: ArticleMetadata;
 }
 
-const requestBody: Record<string, unknown> = { date: articleDate };
+const requestBody: Record<string, unknown> = { date: articleDate, lang: langArg };
 if (topicsArg.length > 0) requestBody.topics = topicsArg;
 if (limitArg !== undefined) {
   const limit = parseInt(limitArg, 10);
@@ -129,7 +137,7 @@ if (limitArg !== undefined) {
   requestBody.searchLimit = limit;
 }
 
-console.log(`Generating article for ${articleDate}…`);
+console.log(`Generating article for ${articleDate} (lang: ${langArg})…`);
 console.log(`  Endpoint : ${BASE_URL}/api/generate-article`);
 if (topicsArg.length > 0) console.log(`  Topics   : ${topicsArg.join(", ")}`);
 
@@ -185,8 +193,6 @@ if (existsSync(outputPath) && !forceOverwrite) {
 // ---------------------------------------------------------------------------
 // Write article
 // ---------------------------------------------------------------------------
-// Note: .en.md files require daily-article.yml SLUG calculation updates
-// for proper git commits. See: subsequent PR for full automation.
 try {
   writeFileSync(outputPath, article.content, "utf8");
 } catch (err) {
