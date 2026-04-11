@@ -132,3 +132,43 @@ jobs:
             -H "Content-Type: application/json" \
             -d "$PAYLOAD" \
             --max-time 60 || echo "Newsletter send failed (continuing)"
+
+      - name: Post to Bluesky
+        if: steps.commit.outcome == 'success' && steps.commit.outputs.article_file != ''
+        continue-on-error: true
+        env:
+          BLUESKY_POST_URL: ${{ secrets.BLUESKY_POST_URL }}
+          INTERNAL_API_TOKEN: ${{ secrets.INTERNAL_API_TOKEN }}
+          ARTICLE_FILE: ${{ steps.commit.outputs.article_file }}
+        run: |
+          if [ -z "$BLUESKY_POST_URL" ] || [ -z "$ARTICLE_FILE" ] || [ ! -f "$ARTICLE_FILE" ]; then
+            echo "Skipping Bluesky post: missing URL or article file"
+            exit 0
+          fi
+
+          # Extract article frontmatter using sed (remove leading/trailing quotes from YAML values)
+          TITLE=$(sed -n 's/^title: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
+          SUMMARY=$(sed -n 's/^summary: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
+
+          # Extract slug from filename (e.g., 2026-04-11-article-slug.md -> 2026-04-11-article-slug)
+          SLUG=$(basename "$ARTICLE_FILE" .md)
+
+          if [ -z "$TITLE" ] || [ -z "$SUMMARY" ] || [ -z "$SLUG" ]; then
+            echo "Skipping Bluesky post: incomplete article metadata"
+            exit 0
+          fi
+
+          echo "Posting to Bluesky for article: $SLUG"
+
+          # Build JSON payload safely using jq
+          PAYLOAD=$(jq -n \
+            --arg slug "$SLUG" \
+            --arg title "$TITLE" \
+            --arg summary "$SUMMARY" \
+            '{articleSlug: $slug, articleTitle: $title, articleSummary: $summary}')
+
+          curl -s -f -X POST "$BLUESKY_POST_URL" \
+            -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
+            -H "Content-Type: application/json" \
+            -d "$PAYLOAD" \
+            --max-time 60 || echo "Bluesky post failed (continuing)"

@@ -75,6 +75,22 @@ declare namespace Cloudflare {
      * Example value: "12345,67890"
      */
     ADMIN_GITHUB_IDS?: string;
+    /**
+     * Bluesky handle for publishing articles.
+     * Optional — when unset, Bluesky posting is skipped.
+     *
+     * Set via: wrangler pages secret put BLUESKY_IDENTIFIER
+     * Example value: "ragtimez.bsky.social"
+     */
+    BLUESKY_IDENTIFIER?: string;
+    /**
+     * Bluesky App Password for authentication.
+     * Generate at https://bsky.app/settings/app-passwords
+     * Optional — when unset, Bluesky posting is skipped.
+     *
+     * Set via: wrangler pages secret put BLUESKY_APP_PASSWORD
+     */
+    BLUESKY_APP_PASSWORD?: string;
   }
 }
 
