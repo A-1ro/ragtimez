@@ -19,6 +19,7 @@ const {
 
 const siteName = "RAGtimeZ";
 const user = Astro.locals.user;
+const isAdmin = Astro.locals.isAdmin ?? false;
 ---
 
 <!doctype html>
@@ -249,6 +250,28 @@ const user = Astro.locals.user;
         border-color: var(--color-muted);
       }
 
+      /* Admin dashboard link — only rendered for admin users */
+      .admin-link {
+        display: inline-flex;
+        align-items: center;
+        font-size: 0.8125rem;
+        font-weight: 600;
+        color: var(--color-accent-soft);
+        background: none;
+        border: 1px solid rgba(147, 197, 253, 0.25);
+        border-radius: 0.5rem;
+        padding: 0.3em 0.75em;
+        text-decoration: none;
+        transition: color 0.2s, border-color 0.2s, background 0.2s;
+        white-space: nowrap;
+      }
+      .admin-link:hover {
+        color: var(--color-accent-soft);
+        border-color: var(--color-accent-soft);
+        background: rgba(147, 197, 253, 0.08);
+        text-decoration: none;
+      }
+
 
       main {
         max-width: var(--max-width);
@@ -378,6 +401,11 @@ const user = Astro.locals.user;
                 />
                 <span class="user-login">{user.login}</span>
               </a>
+              {isAdmin && (
+                <a href="/admin/quality" class="admin-link" aria-label="管理ダッシュボードを開く">
+                  管理
+                </a>
+              )}
               <form method="POST" action="/api/auth/logout" class="logout-form">
                 <button type="submit" class="logout-btn">ログアウト</button>
               </form>

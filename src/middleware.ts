@@ -1,6 +1,7 @@
 import { defineMiddleware } from "astro:middleware";
 import { env } from "cloudflare:workers";
 import { getSessionId, getSession } from "./lib/session";
+import { isAdminUser } from "./lib/admin";
 
 /**
  * Global middleware that runs on every request.
@@ -38,5 +39,10 @@ export const onRequest = defineMiddleware(async (context, next) => {
       context.locals.user = user;
     }
   }
+
+  // Set isAdmin based on the loaded session user and ADMIN_GITHUB_IDS binding.
+  // Defaults to false when the user is not logged in or the binding is unset.
+  context.locals.isAdmin = isAdminUser(context.locals.user, env.ADMIN_GITHUB_IDS);
+
   return next();
 });
