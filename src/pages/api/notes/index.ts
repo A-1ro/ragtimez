@@ -5,6 +5,8 @@ import { env } from "cloudflare:workers";
  * Note object returned from the API.
  * `author_note_count` is the total number of notes the author has posted
  * across all articles, used to compute contributor badges on the client.
+ * `helpful_count` is the number of "helpful" votes the note has received.
+ * `viewer_has_voted` indicates whether the currently authenticated user has voted.
  */
 export interface Note {
   id: string;
@@ -17,18 +19,23 @@ export interface Note {
   updated_at: string;
   /** Total notes posted by this author (for contributor badge rendering). */
   author_note_count: number;
+  /** Number of "helpful" votes this note has received. */
+  helpful_count: number;
+  /** Whether the currently authenticated viewer has voted this note as helpful. */
+  viewer_has_voted: boolean;
 }
 
 /**
- * GET /api/notes?article=<slug>
+ * GET /api/notes?article=<slug>[&sort=helpful|new]
  *
- * Retrieves all community notes for an article, ordered by creation date
- * (newest first).  Each note includes `author_note_count` — the total number
- * of notes that author has posted across all articles — so the client can
- * render contributor badges without an extra round-trip.
+ * Retrieves all community notes for an article. Each note includes:
+ *   - `author_note_count` — author's total notes (for contributor badge)
+ *   - `helpful_count`     — number of helpful votes
+ *   - `viewer_has_voted`  — whether the current user voted (false if unauthenticated)
  *
  * Query parameters:
  *   article  – required – article slug
+ *   sort     – optional – "helpful" sorts by vote count desc then newest; default/omitted/"new" sorts newest first
  *
  * Response (200):
  *   { notes: Note[] }
@@ -37,9 +44,10 @@ export interface Note {
  *   400  – missing `article` parameter
  *   500  – DB binding unavailable
  */
-export const GET: APIRoute = async ({ request }) => {
+export const GET: APIRoute = async ({ request, locals }) => {
   const { searchParams } = new URL(request.url);
   const articleSlug = searchParams.get("article")?.trim();
+  const sort = searchParams.get("sort")?.trim() ?? "new";
 
   if (!articleSlug) {
     return new Response(
@@ -56,34 +64,87 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   try {
-    // LEFT JOIN a per-author count subquery so that each note row carries the
-    // author's total note count.  COALESCE guards against the (impossible in
-    // practice) case where the subquery produces no row for an author.
-    const result = await env.DB.prepare(
-      `SELECT n.id, n.article_slug, n.author_github_id, n.author_username, n.author_avatar,
-              n.body, n.created_at, n.updated_at,
-              COALESCE(c.cnt, 0) AS author_note_count
-       FROM notes n
-       LEFT JOIN (
-         SELECT author_github_id, COUNT(*) AS cnt
-         FROM notes
-         GROUP BY author_github_id
-       ) c ON c.author_github_id = n.author_github_id
-       WHERE n.article_slug = ?
-       ORDER BY n.created_at DESC`
-    )
-      .bind(articleSlug)
-      .all();
+    const viewerGithubId = locals.user?.githubId ?? null;
 
-    const notes = (result.results ?? []) as Note[];
+    // ORDER BY clause: "helpful" sorts by vote count desc then newest first;
+    // any other value (including "new") sorts by creation date desc.
+    const orderByClause =
+      sort === "helpful"
+        ? "ORDER BY helpful_count DESC, n.created_at DESC"
+        : "ORDER BY n.created_at DESC";
 
-    return new Response(
-      JSON.stringify({ notes }),
-      {
-        status: 200,
-        headers: { "Content-Type": "application/json" },
-      }
-    );
+    if (viewerGithubId) {
+      // Authenticated: join vote counts and per-viewer vote status in one query.
+      const result = await env.DB.prepare(
+        `SELECT n.id, n.article_slug, n.author_github_id, n.author_username, n.author_avatar,
+                n.body, n.created_at, n.updated_at,
+                COALESCE(c.cnt, 0) AS author_note_count,
+                COALESCE(v.cnt, 0) AS helpful_count,
+                CASE WHEN vu.note_id IS NOT NULL THEN 1 ELSE 0 END AS viewer_has_voted
+         FROM notes n
+         LEFT JOIN (
+           SELECT author_github_id, COUNT(*) AS cnt
+           FROM notes
+           GROUP BY author_github_id
+         ) c ON c.author_github_id = n.author_github_id
+         LEFT JOIN (
+           SELECT note_id, COUNT(*) AS cnt
+           FROM note_votes
+           GROUP BY note_id
+         ) v ON v.note_id = n.id
+         LEFT JOIN note_votes vu ON vu.note_id = n.id AND vu.user_github_id = ?
+         WHERE n.article_slug = ?
+         ${orderByClause}`
+      )
+        .bind(viewerGithubId, articleSlug)
+        .all();
+
+      const rawNotes = (result.results ?? []) as Array<Record<string, unknown>>;
+      // SQLite returns integers; coerce the boolean column to an actual boolean.
+      const notes: Note[] = rawNotes.map((row) => ({
+        ...(row as unknown as Note),
+        viewer_has_voted: row.viewer_has_voted === 1,
+      }));
+
+      return new Response(
+        JSON.stringify({ notes }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    } else {
+      // Unauthenticated: no viewer vote join needed; hardcode viewer_has_voted = false.
+      const result = await env.DB.prepare(
+        `SELECT n.id, n.article_slug, n.author_github_id, n.author_username, n.author_avatar,
+                n.body, n.created_at, n.updated_at,
+                COALESCE(c.cnt, 0) AS author_note_count,
+                COALESCE(v.cnt, 0) AS helpful_count
+         FROM notes n
+         LEFT JOIN (
+           SELECT author_github_id, COUNT(*) AS cnt
+           FROM notes
+           GROUP BY author_github_id
+         ) c ON c.author_github_id = n.author_github_id
+         LEFT JOIN (
+           SELECT note_id, COUNT(*) AS cnt
+           FROM note_votes
+           GROUP BY note_id
+         ) v ON v.note_id = n.id
+         WHERE n.article_slug = ?
+         ${orderByClause}`
+      )
+        .bind(articleSlug)
+        .all();
+
+      const rawNotes = (result.results ?? []) as Array<Record<string, unknown>>;
+      const notes: Note[] = rawNotes.map((row) => ({
+        ...(row as unknown as Note),
+        viewer_has_voted: false,
+      }));
+
+      return new Response(
+        JSON.stringify({ notes }),
+        { status: 200, headers: { "Content-Type": "application/json" } }
+      );
+    }
   } catch (err) {
     console.error("[api/notes] GET failed", { error: String(err) });
     return new Response(
@@ -109,7 +170,8 @@ export const GET: APIRoute = async ({ request }) => {
  *
  * The returned note includes `author_note_count` reflecting the author's
  * updated total (including this new note) so the client can immediately
- * show the correct contributor badge.
+ * show the correct contributor badge. `helpful_count` and `viewer_has_voted`
+ * are initialised to 0/false for the newly created note.
  *
  * Error responses:
  *   400  – invalid request body or validation error
@@ -216,6 +278,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
       created_at: now,
       updated_at: now,
       author_note_count: authorNoteCount,
+      // A freshly created note has no votes yet.
+      helpful_count: 0,
+      viewer_has_voted: false,
     };
 
     return new Response(
