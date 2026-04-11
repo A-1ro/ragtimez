@@ -1,4 +1,5 @@
 import type { APIRoute } from "astro";
+import { getCollection } from "astro:content";
 import { env } from "cloudflare:workers";
 import { timingSafeEqual } from "../../lib/auth";
 
@@ -18,6 +19,11 @@ const MAX_CONTEXT_ENTRIES = 20;
  * Number of days of RSS entries to retrieve from D1.
  */
 const RSS_LOOKBACK_DAYS = 7;
+
+/**
+ * Number of days of past articles to consider when avoiding topic duplication.
+ */
+const PAST_ARTICLES_LOOKBACK_DAYS = 14;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -137,6 +143,36 @@ const DEFAULT_TOPICS = [
 const LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
 /**
+ * Load recent past articles from the content collection to avoid topic duplication.
+ * Returns an array of { title, tags, date } for articles published within the lookback window.
+ */
+async function loadRecentPastArticles(
+  today: string,
+): Promise<{ title: string; tags: string[]; date: string }[]> {
+  try {
+    const collection = await getCollection("articles", ({ data }) => !data.draft);
+    const cutoff = new Date(today);
+    cutoff.setDate(cutoff.getDate() - PAST_ARTICLES_LOOKBACK_DAYS);
+    return collection
+      .map((entry) => ({
+        title: entry.data.title,
+        tags: entry.data.tags ?? [],
+        date:
+          entry.data.date instanceof Date
+            ? entry.data.date.toISOString().slice(0, 10)
+            : String(entry.data.date),
+      }))
+      .filter((a) => new Date(a.date) >= cutoff)
+      .sort((a, b) => (a.date < b.date ? 1 : -1));
+  } catch (err) {
+    console.warn(
+      `Failed to load past articles: ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return [];
+  }
+}
+
+/**
  * Build a deduped source list from RSS entries.
  */
 function extractSources(entries: RssEntry[]): ArticleSource[] {
@@ -201,9 +237,26 @@ async function generateWithLLM(
   entries: RssEntry[],
   date: string,
   topics: string[],
+  pastArticles: { title: string; tags: string[]; date: string }[],
 ): Promise<{ title: string; summary: string; tags: string[]; body: string; selectedTopic: string }> {
   // --- Step 0: Topic selection ---
   const contextForSelection = buildContext(entries);
+
+  // Build "already covered" block from past articles so the LLM avoids duplicates.
+  const avoidBlock =
+    pastArticles.length > 0
+      ? "Already covered in the last " +
+        PAST_ARTICLES_LOOKBACK_DAYS +
+        " days (DO NOT pick a topic that overlaps with these — choose something different):\n" +
+        pastArticles
+          .map(
+            (a) =>
+              `- [${a.date}] ${a.title}${a.tags.length > 0 ? ` (tags: ${a.tags.join(", ")})` : ""}`,
+          )
+          .join("\n") +
+        "\n\n---\n\nNews items to choose from:\n\n"
+      : "";
+
   const topicSelectionResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
     LLM_MODEL,
     {
@@ -215,14 +268,16 @@ async function generateWithLLM(
             "Read these news items and identify ONE topic that:\n" +
             "1. Has the most technical depth and substance\n" +
             "2. Is most actionable/useful for working engineers\n" +
-            "3. Has enough information for a 1000-word deep dive\n\n" +
+            "3. Has enough information for a 1000-word deep dive\n" +
+            "4. Does NOT overlap with topics already covered in recent articles (see list below)\n\n" +
+            "If every high-depth topic has been covered, pick the news item that adds the most NEW technical information not in the past articles, and explain what's new in the reason.\n\n" +
             "Output ONLY valid JSON with exactly these keys:\n" +
             '- "topic": English description of the chosen topic (1 sentence)\n' +
-            '- "reason": why this is the best topic for engineers (1 sentence)\n' +
+            '- "reason": why this is the best topic AND how it differs from past articles (1 sentence)\n' +
             '- "indices": array of 1-based entry numbers that are relevant to this topic\n' +
             "Output only the JSON object, no markdown fences.",
         },
-        { role: "user", content: contextForSelection },
+        { role: "user", content: avoidBlock + contextForSelection },
       ],
       max_tokens: 256,
       temperature: 0.3,
@@ -538,7 +593,8 @@ export const POST: APIRoute = async ({ request }) => {
     selectedTopic: string;
   };
   try {
-    llmResult = await generateWithLLM(contextEntries, dateInput, topics);
+    const pastArticles = await loadRecentPastArticles(dateInput);
+    llmResult = await generateWithLLM(contextEntries, dateInput, topics, pastArticles);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
