@@ -97,7 +97,7 @@ const isAdmin = Astro.locals.isAdmin ?? false;
       rel="alternate"
       type="application/rss+xml"
       title="RAGtimeZ RSS Feed"
-      href={new URL("/rss.xml", Astro.site ?? Astro.url.origin).href}
+      href={new URL(lang === "en" ? "/en/rss.xml" : "/rss.xml", Astro.site ?? Astro.url.origin).href}
     />
 
     <!-- Google Fonts: Playfair Display -->

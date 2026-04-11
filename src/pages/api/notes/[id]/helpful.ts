@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
+import { getLangFromRequest, t } from "../../../../lib/i18n";
 
 /**
  * Helper: fetch the current helpful_count for a note after a mutation.
@@ -32,17 +33,19 @@ async function getHelpfulCount(noteId: string): Promise<number> {
  *   404  – note not found
  *   500  – DB binding unavailable or database error
  */
-export const POST: APIRoute = async ({ params, locals }) => {
+export const POST: APIRoute = async ({ request, params, locals }) => {
+  const lang = getLangFromRequest(request);
+
   if (!locals.user) {
     return new Response(
-      JSON.stringify({ error: "Unauthorized: authentication required" }),
+      JSON.stringify({ error: t(lang, "noteErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (!env.DB) {
     return new Response(
-      JSON.stringify({ error: "DB binding is not available in this environment" }),
+      JSON.stringify({ error: t(lang, "noteErrDbUnavailable") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -50,7 +53,7 @@ export const POST: APIRoute = async ({ params, locals }) => {
   const noteId = params.id?.trim();
   if (!noteId) {
     return new Response(
-      JSON.stringify({ error: "Note ID is required" }),
+      JSON.stringify({ error: t(lang, "noteErrIdRequired") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -67,7 +70,7 @@ export const POST: APIRoute = async ({ params, locals }) => {
 
     if (!noteRow) {
       return new Response(
-        JSON.stringify({ error: "Note not found" }),
+        JSON.stringify({ error: t(lang, "noteErrNotFound") }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -89,7 +92,7 @@ export const POST: APIRoute = async ({ params, locals }) => {
   } catch (err) {
     console.error("[api/notes/id/helpful] POST failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: t(lang, "noteErrInternal") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -112,17 +115,19 @@ export const POST: APIRoute = async ({ params, locals }) => {
  *   401  – not authenticated
  *   500  – DB binding unavailable or database error
  */
-export const DELETE: APIRoute = async ({ params, locals }) => {
+export const DELETE: APIRoute = async ({ request, params, locals }) => {
+  const lang = getLangFromRequest(request);
+
   if (!locals.user) {
     return new Response(
-      JSON.stringify({ error: "Unauthorized: authentication required" }),
+      JSON.stringify({ error: t(lang, "noteErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (!env.DB) {
     return new Response(
-      JSON.stringify({ error: "DB binding is not available in this environment" }),
+      JSON.stringify({ error: t(lang, "noteErrDbUnavailable") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -130,7 +135,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
   const noteId = params.id?.trim();
   if (!noteId) {
     return new Response(
-      JSON.stringify({ error: "Note ID is required" }),
+      JSON.stringify({ error: t(lang, "noteErrIdRequired") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -153,7 +158,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
   } catch (err) {
     console.error("[api/notes/id/helpful] DELETE failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: t(lang, "noteErrInternal") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }

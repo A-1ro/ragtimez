@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
+import { getLangFromRequest, t } from "../../../lib/i18n";
 
 /**
  * DELETE /api/notes/:id
@@ -18,18 +19,20 @@ import { env } from "cloudflare:workers";
  *   404  – note not found
  *   500  – DB binding unavailable or database error
  */
-export const DELETE: APIRoute = async ({ params, locals }) => {
+export const DELETE: APIRoute = async ({ request, params, locals }) => {
+  const lang = getLangFromRequest(request);
+
   // Check authentication
   if (!locals.user) {
     return new Response(
-      JSON.stringify({ error: "Unauthorized: authentication required" }),
+      JSON.stringify({ error: t(lang, "noteErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (!env.DB) {
     return new Response(
-      JSON.stringify({ error: "DB binding is not available in this environment" }),
+      JSON.stringify({ error: t(lang, "noteErrDbUnavailable") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -37,7 +40,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
   const noteId = params.id?.trim();
   if (!noteId) {
     return new Response(
-      JSON.stringify({ error: "Note ID is required" }),
+      JSON.stringify({ error: t(lang, "noteErrIdRequired") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -54,7 +57,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
 
     if (!noteResult) {
       return new Response(
-        JSON.stringify({ error: "Note not found" }),
+        JSON.stringify({ error: t(lang, "noteErrNotFound") }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -64,7 +67,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
     // Check ownership
     if (note.author_github_id !== githubId) {
       return new Response(
-        JSON.stringify({ error: "Forbidden: you are not the author of this note" }),
+        JSON.stringify({ error: t(lang, "noteErrForbidden") }),
         { status: 403, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -80,7 +83,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
     // but this guards against race conditions where the note was deleted between our SELECT and DELETE)
     if (result.meta.changes === 0) {
       return new Response(
-        JSON.stringify({ error: "Note not found" }),
+        JSON.stringify({ error: t(lang, "noteErrNotFound") }),
         { status: 404, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -89,7 +92,7 @@ export const DELETE: APIRoute = async ({ params, locals }) => {
   } catch (err) {
     console.error("[api/notes/id] DELETE failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: t(lang, "noteErrInternal") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
