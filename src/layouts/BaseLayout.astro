@@ -1,5 +1,7 @@
 ---
 import NewsletterForm from "../components/NewsletterForm.astro";
+import LanguageSwitcher from "../components/LanguageSwitcher.astro";
+import { getLangFromPath, localizePath, type Lang } from "../lib/i18n";
 
 interface Props {
   title: string;
@@ -7,6 +9,9 @@ interface Props {
   ogImage?: string;
   ogType?: string;
   canonicalUrl?: string;
+  lang?: Lang;
+  showLanguageSwitcher?: boolean;
+  showHreflang?: boolean;
 }
 
 const {
@@ -15,6 +20,9 @@ const {
   ogImage = "/og-default.png",
   ogType = "website",
   canonicalUrl = Astro.url.href,
+  lang = getLangFromPath(Astro.url.pathname),
+  showLanguageSwitcher = true,
+  showHreflang = true,
 } = Astro.props;
 
 const siteName = "RAGtimeZ";
@@ -23,7 +31,7 @@ const isAdmin = Astro.locals.isAdmin ?? false;
 ---
 
 <!doctype html>
-<html lang="ja">
+<html lang={lang}>
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
@@ -37,6 +45,16 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     <meta property="og:description" content={description} />
     <meta property="og:image" content={new URL(ogImage, Astro.site ?? Astro.url.origin).href} />
     <meta property="og:url" content={canonicalUrl} />
+    <meta property="og:locale" content={lang === "en" ? "en_US" : "ja_JP"} />
+
+    <!-- hreflang: alternate language links -->
+    {showHreflang && (
+      <>
+        <link rel="alternate" hreflang="ja" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang="en" href={new URL(localizePath(Astro.url.pathname, "en"), Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang="x-default" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+      </>
+    )}
 
     <!-- Twitter Card -->
     <meta name="twitter:card" content="summary_large_image" />
@@ -378,15 +396,16 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     <header>
       <div class="header-top">
         <div class="nav-left">
-          <a href="/" class="brand-link">
+          <a href={lang === "ja" ? "/" : "/en"} class="brand-link">
             <img src="/logo.png" alt="RAGtimeZ" class="brand-logo" />
           </a>
-          <a href="/rss.xml" class="rss-link" aria-label="RSSフィード">
+          <a href={lang === "ja" ? "/rss.xml" : "/en/rss.xml"} class="rss-link" aria-label={lang === "en" ? "RSS Feed" : "RSSフィード"}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20 4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/>
             </svg>
             RSS
           </a>
+          {showLanguageSwitcher && <LanguageSwitcher currentLang={lang} />}
         </div>
         <div class="nav-auth">
           {user ? (
@@ -411,7 +430,9 @@ const isAdmin = Astro.locals.isAdmin ?? false;
               </form>
             </div>
           ) : (
-            <a href="/api/auth/login" class="login-btn">GitHubでログイン</a>
+            <a href={`/api/auth/login?redirect=${encodeURIComponent(Astro.url.pathname)}`} class="login-btn">
+              {lang === "en" ? "Login with GitHub" : "GitHubでログイン"}
+            </a>
           )}
         </div>
       </div>
@@ -421,9 +442,15 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     </main>
     <section class="newsletter-cta" aria-labelledby="newsletter-heading">
       <div class="newsletter-cta-inner">
-        <h2 id="newsletter-heading">最新のAI動向を毎朝お届け</h2>
-        <p>Azure / LLM / RAG / AI Agents の注目記事を、毎日要約してメールでお届けします。いつでも解除できます。</p>
-        <NewsletterForm />
+        <h2 id="newsletter-heading">
+          {lang === "en" ? "AI News Delivered Every Morning" : "最新のAI動向を毎朝お届け"}
+        </h2>
+        <p>
+          {lang === "en"
+            ? "Stay updated on Azure, LLM, RAG, and AI Agents with daily curated summaries delivered to your inbox. Unsubscribe anytime."
+            : "Azure / LLM / RAG / AI Agents の注目記事を、毎日要約してメールでお届けします。いつでも解除できます。"}
+        </p>
+        <NewsletterForm lang={lang} />
       </div>
     </section>
     <footer>

@@ -95,16 +95,9 @@ if (!TOKEN) {
 }
 
 // ---------------------------------------------------------------------------
-// Output path
+// Output path will be determined from API response filename
 // ---------------------------------------------------------------------------
 const repoRoot = resolve(__dirname, "..");
-const outputPath = resolve(repoRoot, "src", "content", "articles", `${articleDate}.md`);
-
-if (existsSync(outputPath) && !forceOverwrite) {
-  console.log(`Article already exists: ${outputPath}`);
-  console.log("Use --force to overwrite.");
-  process.exit(0);
-}
 
 // ---------------------------------------------------------------------------
 // API call
@@ -180,9 +173,20 @@ if (!article.content || !article.filename) {
   process.exit(1);
 }
 
+// Resolve output path from API-provided filename
+const outputPath = resolve(repoRoot, "src", "content", "articles", article.filename);
+
+if (existsSync(outputPath) && !forceOverwrite) {
+  console.log(`Article already exists: ${outputPath}`);
+  console.log("Use --force to overwrite.");
+  process.exit(0);
+}
+
 // ---------------------------------------------------------------------------
 // Write article
 // ---------------------------------------------------------------------------
+// Note: .en.md files require daily-article.yml SLUG calculation updates
+// for proper git commits. See: subsequent PR for full automation.
 try {
   writeFileSync(outputPath, article.content, "utf8");
 } catch (err) {

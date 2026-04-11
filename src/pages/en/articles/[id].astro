@@ -1,0 +1,763 @@
+---
+import { getCollection, render } from "astro:content";
+import BaseLayout from "../../../layouts/BaseLayout.astro";
+import { getTrustLabel, getTrustColor } from "../../../constants/trustLevels";
+import { formatDate } from "../../../utils/date";
+import { computeArticleQualityFromData } from "../../../lib/quality";
+import { env } from "cloudflare:workers";
+
+export const prerender = false;
+
+const { id } = Astro.params;
+const lang = "en";
+
+const allArticles = await getCollection("articles");
+const article = allArticles.find((a) => a.id === id && a.data.lang === "en");
+
+if (!article) {
+  return Astro.redirect("/404");
+}
+
+const { Content } = await render(article);
+
+const trustColor = getTrustColor(article.data.trustLevel);
+const user = Astro.locals.user ?? null;
+
+let noteCount = 0;
+try {
+  if (env.DB) {
+    const row = await env.DB.prepare(
+      "SELECT COUNT(*) AS cnt FROM notes WHERE article_slug = ?"
+    )
+      .bind(article.id)
+      .first<{ cnt: number }>();
+    noteCount = row?.cnt ?? 0;
+  }
+} catch {
+  // Non-fatal: DB unavailable in local dev
+}
+
+const quality = computeArticleQualityFromData(article.data, noteCount);
+
+const gradeColor: Record<string, string> = {
+  A: "#22c55e",
+  B: "#3d8ef5",
+  C: "#f59e0b",
+  D: "#ef4444",
+};
+const qualityColor = gradeColor[quality.grade] ?? "#6b7db3";
+
+const notesPenaltyDisplay =
+  quality.breakdown.notesPenalty > 0
+    ? `-${quality.breakdown.notesPenalty}`
+    : "0";
+
+const qualityTooltip = [
+  `Score: ${quality.score}/100`,
+  `Sources: +${quality.breakdown.sources}`,
+  `Official source ratio: +${quality.breakdown.officialRatio}`,
+  `Trust level: +${quality.breakdown.trustLevel}`,
+  `Community notes adjustment: ${notesPenaltyDisplay}`,
+].join(" | ");
+---
+
+<BaseLayout
+  title={`${article.data.title} | RAGtimeZ`}
+  description={article.data.summary}
+  ogType="article"
+  lang="en"
+  showLanguageSwitcher={false}
+  showHreflang={false}
+>
+  <article class="article">
+    <header class="article-header">
+      <a href="/en" class="back-link">← Back to list</a>
+      <div class="article-meta">
+        <time datetime={article.data.date.toISOString()} class="article-date">
+          {formatDate(article.data.date, lang)}
+        </time>
+        <span
+          class="trust-badge"
+          style={`background-color: ${trustColor}22; color: ${trustColor}; border-color: ${trustColor}44;`}
+        >
+          {getTrustLabel(article.data.trustLevel, lang)}
+        </span>
+        <details class="quality-details">
+          <summary
+            class="trust-badge quality-badge"
+            style={`background-color: ${qualityColor}22; color: ${qualityColor}; border-color: ${qualityColor}44; cursor: pointer; list-style: none;`}
+            title={qualityTooltip}
+          >
+            Quality {quality.grade} <span class="quality-score-num">{quality.score}</span>
+          </summary>
+          <div class="quality-breakdown">
+            <dl class="breakdown-list">
+              <div class="breakdown-row">
+                <dt>Sources</dt>
+                <dd>+{quality.breakdown.sources}</dd>
+              </div>
+              <div class="breakdown-row">
+                <dt>Official source ratio</dt>
+                <dd>+{quality.breakdown.officialRatio}</dd>
+              </div>
+              <div class="breakdown-row">
+                <dt>Trust level</dt>
+                <dd>+{quality.breakdown.trustLevel}</dd>
+              </div>
+              <div class="breakdown-row">
+                <dt>Community notes adjustment</dt>
+                <dd>{notesPenaltyDisplay}</dd>
+              </div>
+              <div class="breakdown-row breakdown-total">
+                <dt>Total</dt>
+                <dd>{quality.score} / 100</dd>
+              </div>
+            </dl>
+          </div>
+        </details>
+      </div>
+      <h1 class="article-title">{article.data.title}</h1>
+      <p class="article-summary">{article.data.summary}</p>
+      {article.data.tags.length > 0 && (
+        <ul class="tag-list" aria-label="Tags">
+          {article.data.tags.map((tag) => (
+            <li class="tag">{tag}</li>
+          ))}
+        </ul>
+      )}
+    </header>
+
+    <div class="article-body prose">
+      <Content />
+    </div>
+
+    {article.data.sources.length > 0 && (
+      <aside class="sources">
+        <h2 class="sources-heading">Sources</h2>
+        <ul class="sources-list">
+          {article.data.sources.map((source) => (
+            <li class="source-item">
+              <a href={source.url} target="_blank" rel="noopener noreferrer" class="source-link">
+                {source.title ?? source.url}
+              </a>
+              {source.type && (
+                <span class="source-type">{source.type}</span>
+              )}
+            </li>
+          ))}
+        </ul>
+      </aside>
+    )}
+
+    <section class="community-notes" data-article-id={article.id} data-current-github-id={user?.githubId ?? ""}>
+      <h2 class="notes-heading">Community Notes</h2>
+
+      <div class="notes-controls">
+        <label for="notes-sort" class="sort-label">Sort by:</label>
+        <select id="notes-sort" class="sort-select">
+          <option value="new">Newest</option>
+          <option value="helpful">Most helpful</option>
+        </select>
+      </div>
+
+      <div id="notes-list" class="notes-list" aria-live="polite" aria-label="Community notes list">
+        <div class="loading-state">Loading…</div>
+      </div>
+
+      {user ? (
+        <div class="note-form-container">
+          <div class="form-header">
+            <img
+              src={user.avatarUrl}
+              alt={user.login}
+              class="form-avatar"
+            />
+            <span class="form-username">{user.login}</span>
+          </div>
+          <form id="note-form" class="note-form">
+            <textarea
+              id="note-textarea"
+              name="body"
+              placeholder="Add a note about this article…"
+              rows="3"
+              maxlength="1000"
+              required
+            ></textarea>
+            <div class="form-footer">
+              <span id="char-count" class="char-count">0 / 1000</span>
+              <button type="submit" class="submit-button">Post</button>
+            </div>
+          </form>
+        </div>
+      ) : (
+        <div class="login-prompt">
+          <p>Sign in with GitHub to add a note.</p>
+          <a href={`/api/auth/login?redirect=${encodeURIComponent(Astro.url.pathname)}`} class="login-button">Login with GitHub</a>
+        </div>
+      )}
+    </section>
+  </article>
+</BaseLayout>
+
+<style>
+  .article {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 1.5rem 0 3rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    margin-bottom: 1.5rem;
+  }
+  .back-link:hover {
+    color: var(--color-accent-hover);
+    text-decoration: none;
+  }
+
+  .article-meta {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    flex-wrap: wrap;
+    margin-bottom: 0.75rem;
+  }
+
+  .article-date {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+  }
+
+  .trust-badge {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .quality-details {
+    position: relative;
+    display: inline-block;
+  }
+
+  .quality-badge::-webkit-details-marker {
+    display: none;
+  }
+
+  .quality-score-num {
+    font-variant-numeric: tabular-nums;
+    opacity: 0.85;
+  }
+
+  .quality-breakdown {
+    position: absolute;
+    top: calc(100% + 0.4rem);
+    left: 0;
+    z-index: 20;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.75rem 1rem;
+    min-width: 220px;
+    box-shadow: 0 4px 24px rgba(0, 0, 0, 0.4);
+    font-size: 0.8125rem;
+  }
+
+  .breakdown-list {
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .breakdown-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 1rem;
+    color: var(--color-muted);
+  }
+
+  .breakdown-row dt {
+    font-weight: 400;
+  }
+
+  .breakdown-row dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    color: var(--color-text);
+  }
+
+  .breakdown-total {
+    margin-top: 0.4rem;
+    padding-top: 0.4rem;
+    border-top: 1px solid var(--color-border);
+    color: var(--color-text);
+  }
+
+  .breakdown-total dt,
+  .breakdown-total dd {
+    color: var(--color-text);
+    font-weight: 700;
+  }
+
+  .article-title {
+    margin: 0 0 0.75rem;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 800;
+    line-height: 1.3;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+  }
+
+  .article-summary {
+    margin: 0 0 1rem;
+    font-size: 1.0625rem;
+    color: var(--color-muted);
+    line-height: 1.6;
+    border-left: 3px solid var(--color-accent);
+    padding-left: 1rem;
+  }
+
+  .tag-list {
+    list-style: none;
+    margin: 0 0 1.5rem;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+
+  .tag {
+    background: var(--color-border);
+    color: var(--color-muted);
+    padding: 0.15em 0.6em;
+    border-radius: 999px;
+    font-size: 0.75rem;
+  }
+
+  .article-body.prose {
+    margin: 2rem 0;
+    line-height: 1.75;
+    font-size: 1rem;
+  }
+
+  .sources {
+    margin: 3rem 0 0;
+    padding: 1.5rem;
+    background: rgba(61, 142, 245, 0.03);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+  }
+
+  .sources-heading {
+    margin: 0 0 1rem;
+    font-size: 0.9375rem;
+    font-weight: 700;
+    color: var(--color-text);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .sources-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .source-item {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .source-link {
+    color: var(--color-accent);
+    text-decoration: none;
+    word-break: break-word;
+    font-size: 0.9375rem;
+  }
+
+  .source-link:hover {
+    text-decoration: underline;
+  }
+
+  .source-type {
+    font-size: 0.75rem;
+    padding: 0.15em 0.6em;
+    border-radius: 999px;
+    background: rgba(61, 142, 245, 0.1);
+    color: var(--color-accent-soft);
+    border: 1px solid rgba(61, 142, 245, 0.25);
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+
+  .community-notes {
+    margin: 3rem 0 0;
+    padding-top: 2rem;
+    border-top: 1px solid var(--color-border);
+  }
+
+  .notes-heading {
+    margin: 0 0 1.5rem;
+    font-size: 1.25rem;
+    font-weight: 700;
+    color: var(--color-text);
+  }
+
+  .notes-controls {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .sort-label {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+  }
+
+  .sort-select {
+    padding: 0.35em 0.6em;
+    background: var(--color-surface);
+    color: var(--color-text);
+    border: 1px solid var(--color-border);
+    border-radius: 0.375rem;
+    font-size: 0.875rem;
+    cursor: pointer;
+  }
+
+  .sort-select:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(61, 142, 245, 0.1);
+  }
+
+  .notes-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 2rem;
+  }
+
+  .loading-state {
+    color: var(--color-muted);
+    text-align: center;
+    padding: 2rem;
+  }
+
+  .note-form-container {
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1rem;
+    background: rgba(61, 142, 245, 0.02);
+  }
+
+  .form-header {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+  }
+
+  .form-avatar {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    display: block;
+  }
+
+  .form-username {
+    font-size: 0.875rem;
+    color: var(--color-text);
+    font-weight: 600;
+  }
+
+  .note-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  #note-textarea {
+    padding: 0.75rem;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    background: var(--color-surface);
+    color: var(--color-text);
+    font-family: inherit;
+    font-size: 0.9375rem;
+    resize: none;
+    transition: border-color 0.2s;
+  }
+
+  #note-textarea:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 2px rgba(61, 142, 245, 0.1);
+  }
+
+  #note-textarea::placeholder {
+    color: var(--color-muted);
+  }
+
+  .form-footer {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .char-count {
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  .submit-button {
+    padding: 0.35em 1em;
+    background: var(--color-accent);
+    color: white;
+    border: none;
+    border-radius: 0.5rem;
+    font-weight: 600;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: background 0.2s, box-shadow 0.2s;
+  }
+
+  .submit-button:hover {
+    background: var(--color-accent-hover);
+    box-shadow: 0 0 12px rgba(61, 142, 245, 0.3);
+  }
+
+  .submit-button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .login-prompt {
+    text-align: center;
+    padding: 2rem 1rem;
+    background: rgba(61, 142, 245, 0.02);
+    border: 1px dashed var(--color-border);
+    border-radius: 0.75rem;
+  }
+
+  .login-prompt p {
+    margin: 0 0 1rem;
+    color: var(--color-muted);
+  }
+
+  .login-button {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--color-accent-soft);
+    background: rgba(61, 142, 245, 0.08);
+    border: 1px solid rgba(61, 142, 245, 0.3);
+    border-radius: 0.5rem;
+    padding: 0.35em 0.9em;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+  }
+
+  .login-button:hover {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(61, 142, 245, 0.4);
+    text-decoration: none;
+  }
+
+  @media (max-width: 600px) {
+    .article {
+      padding: 1rem 0 2rem;
+    }
+
+    .article-title {
+      font-size: 1.5rem;
+    }
+
+    .sources {
+      padding: 1rem;
+    }
+
+    .login-button {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .form-footer {
+      flex-direction: column;
+      gap: 0.75rem;
+    }
+
+    .submit-button {
+      width: 100%;
+    }
+  }
+</style>
+
+<script>
+  interface Note {
+    id: string;
+    body: string;
+    author_username: string;
+    author_avatar: string;
+    helpful_count: number;
+    viewer_has_voted: boolean;
+    created_at: string;
+  }
+
+  const notesList = document.getElementById("notes-list");
+  const noteForm = document.getElementById("note-form") as HTMLFormElement | null;
+  const textarea = document.getElementById("note-textarea") as HTMLTextAreaElement | null;
+  const charCount = document.getElementById("char-count") as HTMLSpanElement | null;
+  const sortSelect = document.getElementById("notes-sort") as HTMLSelectElement | null;
+  const notesSection = document.querySelector(".community-notes") as HTMLElement;
+
+  const articleId = notesSection?.dataset.articleId;
+  const currentGithubId = notesSection?.dataset.currentGithubId;
+
+  // Escape HTML special characters to prevent XSS
+  function escapeHtml(text: string): string {
+    const map: Record<string, string> = {
+      "&": "&amp;",
+      "<": "&lt;",
+      ">": "&gt;",
+      '"': "&quot;",
+      "'": "&#039;",
+    };
+    return text.replace(/[&<>"']/g, (char) => map[char]);
+  }
+
+  async function loadNotes(sort: "new" | "helpful" = "new"): Promise<void> {
+    if (!notesList || !articleId) return;
+
+    notesList.innerHTML = '<div class="loading-state">Loading…</div>';
+
+    try {
+      const url = `/api/notes?article=${encodeURIComponent(articleId)}&sort=${encodeURIComponent(sort)}`;
+      const response = await fetch(url);
+
+      if (!response.ok) {
+        throw new Error("Failed to load notes");
+      }
+
+      const data = (await response.json()) as { notes: Note[] };
+      const notes = data.notes || [];
+
+      if (notes.length === 0) {
+        notesList.innerHTML = '<p style="color: var(--color-muted); text-align: center; padding: 2rem 0;">No notes yet. Be the first to add one!</p>';
+        return;
+      }
+
+      notesList.innerHTML = notes
+        .map(
+          (note) => `
+        <div class="note-item">
+          <div class="note-header">
+            <img src="${escapeHtml(note.author_avatar)}" alt="${escapeHtml(note.author_username)}" class="note-avatar" width="24" height="24" />
+            <span class="note-author">${escapeHtml(note.author_username)}</span>
+            <span class="note-date">${escapeHtml(new Date(note.created_at).toLocaleDateString("en-US", { year: "numeric", month: "short", day: "numeric" }))}</span>
+          </div>
+          <p class="note-body">${escapeHtml(note.body)}</p>
+          <div class="note-footer">
+            <button class="helpful-btn" data-note-id="${escapeHtml(note.id)}" aria-pressed="${note.viewer_has_voted}">
+              Helpful (${note.helpful_count})
+            </button>
+          </div>
+        </div>
+      `,
+        )
+        .join("");
+
+      document.querySelectorAll(".helpful-btn").forEach((btn) => {
+        btn.addEventListener("click", async (e) => {
+          const target = e.target as HTMLButtonElement;
+          const noteId = target.dataset.noteId;
+          if (!noteId || !articleId) return;
+
+          try {
+            const response = await fetch(`/api/notes/${encodeURIComponent(noteId)}/helpful`, {
+              method: "POST",
+            });
+
+            if (response.ok) {
+              await loadNotes(sort);
+            }
+          } catch (err) {
+            console.error("Failed to mark as helpful", err);
+          }
+        });
+      });
+    } catch (err) {
+      console.error("Failed to load notes:", err);
+      if (notesList) {
+        notesList.innerHTML =
+          '<p style="color: var(--color-muted); text-align: center; padding: 2rem 0;">Failed to load notes.</p>';
+      }
+    }
+  }
+
+  if (noteForm && textarea && charCount) {
+    textarea.addEventListener("input", () => {
+      charCount.textContent = `${textarea.value.length} / 1000`;
+    });
+
+    noteForm.addEventListener("submit", async (e) => {
+      e.preventDefault();
+
+      const body = textarea.value.trim();
+      if (!body || !articleId) return;
+
+      const submitBtn = noteForm.querySelector("button[type='submit']") as HTMLButtonElement;
+      submitBtn.disabled = true;
+      const originalText = submitBtn.textContent;
+      submitBtn.textContent = "Posting…";
+
+      try {
+        const response = await fetch("/api/notes", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ article_slug: articleId, body }),
+        });
+
+        if (response.ok) {
+          textarea.value = "";
+          charCount.textContent = "0 / 1000";
+          await loadNotes(sortSelect?.value as "new" | "helpful" || "new");
+        } else {
+          const error = await response.text();
+          alert(error || "Failed to post note.");
+        }
+      } catch (err) {
+        console.error("Failed to post note:", err);
+        alert("An error occurred. Please try again.");
+      } finally {
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+      }
+    });
+  }
+
+  if (sortSelect) {
+    sortSelect.addEventListener("change", async () => {
+      await loadNotes(sortSelect.value as "new" | "helpful");
+    });
+  }
+
+  // Initial load
+  await loadNotes("new");
+</script>

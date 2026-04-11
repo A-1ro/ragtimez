@@ -118,6 +118,7 @@ interface GeneratedArticle {
     tags: string[];
     sources: ArticleSource[];
     draft: boolean;
+    lang: "ja" | "en";
   };
 }
 
@@ -133,12 +134,6 @@ interface RssEntry {
 // ---------------------------------------------------------------------------
 // Article generation logic
 // ---------------------------------------------------------------------------
-
-const DEFAULT_TOPICS = [
-  "latest AI and machine learning developments",
-  "large language models news and releases",
-  "AI tools and developer ecosystem updates",
-];
 
 const LLM_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
@@ -236,8 +231,8 @@ interface TopicSelection {
 async function generateWithLLM(
   entries: RssEntry[],
   date: string,
-  topics: string[],
   pastArticles: { title: string; tags: string[]; date: string }[],
+  lang: "ja" | "en" = "ja",
 ): Promise<{
   title: string;
   summary: string;
@@ -324,20 +319,29 @@ async function generateWithLLM(
 
   // --- Step 1: metadata (title, summary, tags) ---
   // Use updated prompt for one-topic deep-dive approach
+  const metaSystemPrompt = lang === "en"
+    ? "You are a senior engineer writing a technical blog. " +
+      "Read the provided information about ONE specific topic and output ONLY valid JSON.\n" +
+      "The JSON must have exactly these three keys:\n" +
+      '- "title": a specific, descriptive English headline (15-50 chars) about this ONE topic. Avoid vague words like "Latest updates" or "Summary".\n' +
+      '- "summary": 2-3 English sentences explaining WHAT changed, WHY it matters technically, and WHAT engineers should do about it.\n' +
+      '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies).\n' +
+      "Output only the JSON object, no markdown fences."
+    : "You are a Japanese senior engineer writing a technical blog. " +
+      "Read the provided information about ONE specific topic and output ONLY valid JSON.\n" +
+      "The JSON must have exactly these three keys:\n" +
+      '- "title": a specific, descriptive Japanese headline (20-50 chars) about this ONE topic. Avoid vague words like "最新動向" or "まとめ".\n' +
+      '- "summary": 2-3 Japanese sentences explaining WHAT changed, WHY it matters technically, and WHAT engineers should do about it.\n' +
+      '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies).\n' +
+      "Output only the JSON object, no markdown fences.";
+
   const metaResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
     LLM_MODEL,
     {
       messages: [
         {
           role: "system",
-          content:
-            "You are a Japanese senior engineer writing a technical blog. " +
-            "Read the provided information about ONE specific topic and output ONLY valid JSON.\n" +
-            "The JSON must have exactly these three keys:\n" +
-            '- "title": a specific, descriptive Japanese headline (20-50 chars) about this ONE topic. Avoid vague words like "最新動向" or "まとめ".\n' +
-            '- "summary": 2-3 Japanese sentences explaining WHAT changed, WHY it matters technically, and WHAT engineers should do about it.\n' +
-            '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies).\n' +
-            "Output only the JSON object, no markdown fences.",
+          content: metaSystemPrompt,
         },
         { role: "user", content: context },
       ],
@@ -377,28 +381,45 @@ async function generateWithLLM(
   }
 
   // --- Step 2: body (plain Markdown, deep-dive focused) ---
+  const bodySystemPrompt = lang === "en"
+    ? "You are a senior software engineer writing a technical deep-dive blog post.\n" +
+      "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
+      "Write in English Markdown, starting directly with ## headings.\n\n" +
+      "Structure the article as follows:\n" +
+      "1. ## What Changed (1-2 paragraphs: the specific change or release)\n" +
+      "2. ## Technical Details (2-3 paragraphs: how it works under the hood, API changes, architecture)\n" +
+      "3. ## Practical Impact (2-3 paragraphs: concrete examples, migration steps, code patterns where relevant)\n" +
+      "4. ## Caveats (1-2 paragraphs: limitations, caveats, what's NOT supported yet)\n" +
+      "5. ## Summary (3-5 bullet points: actionable takeaways for engineers)\n\n" +
+      "Rules:\n" +
+      "- Each section must be substantive (4-8 sentences), not just a one-liner.\n" +
+      "- Mention specific version numbers, API names, model names, and benchmarks when available.\n" +
+      "- If you don't have enough technical detail on a point, say so rather than filling with fluff.\n" +
+      "- Do NOT turn this into a news roundup covering multiple companies or topics.\n" +
+      "Output only the Markdown, nothing else."
+    : "You are a Japanese senior software engineer writing a technical deep-dive blog post.\n" +
+      "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
+      "Write in Japanese Markdown, starting directly with ## headings.\n\n" +
+      "Structure the article as follows:\n" +
+      "1. ## 何が変わったのか (1-2 paragraphs: the specific change or release)\n" +
+      "2. ## 技術的な詳細 (2-3 paragraphs: how it works under the hood, API changes, architecture)\n" +
+      "3. ## エンジニアへの実践的な影響 (2-3 paragraphs: concrete examples, migration steps, code patterns where relevant)\n" +
+      "4. ## 注意点・制限事項 (1-2 paragraphs: limitations, caveats, what's NOT supported yet)\n" +
+      "5. ## まとめ (3-5 bullet points: actionable takeaways for engineers)\n\n" +
+      "Rules:\n" +
+      "- Each section must be substantive (4-8 sentences), not just a one-liner.\n" +
+      "- Mention specific version numbers, API names, model names, and benchmarks when available.\n" +
+      "- If you don't have enough technical detail on a point, say so rather than filling with fluff.\n" +
+      "- Do NOT turn this into a news roundup covering multiple companies or topics.\n" +
+      "Output only the Markdown, nothing else.";
+
   const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
     LLM_MODEL,
     {
       messages: [
         {
           role: "system",
-          content:
-            "You are a Japanese senior software engineer writing a technical deep-dive blog post.\n" +
-            "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
-            "Write in Japanese Markdown, starting directly with ## headings.\n\n" +
-            "Structure the article as follows:\n" +
-            "1. ## 何が変わったのか (1-2 paragraphs: the specific change or release)\n" +
-            "2. ## 技術的な詳細 (2-3 paragraphs: how it works under the hood, API changes, architecture)\n" +
-            "3. ## エンジニアへの実践的な影響 (2-3 paragraphs: concrete examples, migration steps, code patterns where relevant)\n" +
-            "4. ## 注意点・制限事項 (1-2 paragraphs: limitations, caveats, what's NOT supported yet)\n" +
-            "5. ## まとめ (3-5 bullet points: actionable takeaways for engineers)\n\n" +
-            "Rules:\n" +
-            "- Each section must be substantive (4-8 sentences), not just a one-liner.\n" +
-            "- Mention specific version numbers, API names, model names, and benchmarks when available.\n" +
-            "- If you don't have enough technical detail on a point, say so rather than filling with fluff.\n" +
-            "- Do NOT turn this into a news roundup covering multiple companies or topics.\n" +
-            "Output only the Markdown, nothing else.",
+          content: bodySystemPrompt,
         },
         { role: "user", content: contextBlock },
       ],
@@ -434,6 +455,7 @@ function buildMarkdown(
   date: string,
   sources: ArticleSource[],
   trustLevel: "official" | "blog" | "speculative",
+  lang: "ja" | "en" = "ja",
 ): string {
   const sourcesYaml = sources
     .map((s) => {
@@ -453,6 +475,7 @@ trustLevel: "${trustLevel}"
 tags:
 ${tagsYaml}
 draft: false
+lang: ${lang}
 ---
 
 ${llm.body.trim()}
@@ -473,8 +496,8 @@ ${llm.body.trim()}
  *   Requires `Authorization: Bearer <INTERNAL_API_TOKEN>` header.
  *
  * Request body (JSON, optional fields):
- *   date   – ISO date string (default: today in UTC, YYYY-MM-DD)
- *   topics – string[]  search topics (defaults to general AI news)
+ *   date – ISO date string (default: today in UTC, YYYY-MM-DD)
+ *   lang – "ja" | "en" (default: "ja")
  *
  * Response 200:
  *   { filename, content, metadata }
@@ -526,10 +549,7 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  const topics: string[] =
-    Array.isArray(body.topics) && body.topics.length > 0
-      ? (body.topics as string[]).map(String)
-      : DEFAULT_TOPICS;
+  const lang: "ja" | "en" = body.lang === "en" ? "en" : "ja";
 
   // --- Binding checks -------------------------------------------------------
   if (!env.DB) {
@@ -607,7 +627,7 @@ export const POST: APIRoute = async ({ request }) => {
   };
   try {
     const pastArticles = await loadRecentPastArticles(dateInput);
-    llmResult = await generateWithLLM(contextEntries, dateInput, topics, pastArticles);
+    llmResult = await generateWithLLM(contextEntries, dateInput, pastArticles, lang);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
@@ -625,8 +645,8 @@ export const POST: APIRoute = async ({ request }) => {
   const trustLevel = deriveTrustLevel(sources);
 
   // --- Assemble article -----------------------------------------------------
-  const filename = `${dateInput}.md`;
-  const content = buildMarkdown(llmResult, dateInput, sources, trustLevel);
+  const filename = lang === "en" ? `${dateInput}.en.md` : `${dateInput}.md`;
+  const content = buildMarkdown(llmResult, dateInput, sources, trustLevel, lang);
 
   const article: GeneratedArticle = {
     filename,
@@ -639,6 +659,7 @@ export const POST: APIRoute = async ({ request }) => {
       tags: llmResult.tags,
       sources,
       draft: false,
+      lang,
     },
   };
 
