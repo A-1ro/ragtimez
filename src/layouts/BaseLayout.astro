@@ -197,6 +197,24 @@ const user = Astro.locals.user;
         gap: 0.5rem;
       }
 
+      .user-profile-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.5rem;
+        text-decoration: none;
+        color: inherit;
+        border-radius: 0.5rem;
+        padding: 0.15rem 0.35rem;
+        transition: background 0.2s, color 0.2s;
+      }
+      .user-profile-link:hover {
+        background: rgba(61, 142, 245, 0.08);
+        text-decoration: none;
+      }
+      .user-profile-link:hover .user-login {
+        color: var(--color-accent-soft);
+      }
+
       .user-avatar {
         border-radius: 50%;
         display: block;
@@ -207,6 +225,7 @@ const user = Astro.locals.user;
         font-size: 0.875rem;
         font-weight: 600;
         color: var(--color-text);
+        transition: color 0.2s;
       }
 
       .logout-form {
@@ -349,14 +368,16 @@ const user = Astro.locals.user;
         <div class="nav-auth">
           {user ? (
             <div class="user-info">
-              <img
-                src={user.avatarUrl}
-                alt={user.login}
-                class="user-avatar"
-                width="28"
-                height="28"
-              />
-              <span class="user-login">{user.login}</span>
+              <a href={`/profile/${user.login}`} class="user-profile-link" aria-label="マイページを開く">
+                <img
+                  src={user.avatarUrl}
+                  alt={user.login}
+                  class="user-avatar"
+                  width="28"
+                  height="28"
+                />
+                <span class="user-login">{user.login}</span>
+              </a>
               <form method="POST" action="/api/auth/logout" class="logout-form">
                 <button type="submit" class="logout-btn">ログアウト</button>
               </form>
