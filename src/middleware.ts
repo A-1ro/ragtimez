@@ -29,18 +29,18 @@ export const onRequest = defineMiddleware(async (context, next) => {
     console.warn(
       "[auth] AUTH_KV binding is not available; session loading skipped."
     );
-    return next();
-  }
-
-  const sessionId = getSessionId(context.request);
-  if (sessionId) {
-    const user = await getSession(env.AUTH_KV, sessionId);
-    if (user) {
-      context.locals.user = user;
+  } else {
+    const sessionId = getSessionId(context.request);
+    if (sessionId) {
+      const user = await getSession(env.AUTH_KV, sessionId);
+      if (user) {
+        context.locals.user = user;
+      }
     }
   }
 
   // Set isAdmin based on the loaded session user and ADMIN_GITHUB_IDS binding.
+  // Guaranteed to run on all non-redirect paths, regardless of AUTH_KV availability.
   // Defaults to false when the user is not logged in or the binding is unset.
   context.locals.isAdmin = isAdminUser(context.locals.user, env.ADMIN_GITHUB_IDS);
 
