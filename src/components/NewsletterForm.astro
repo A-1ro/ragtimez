@@ -1,11 +1,36 @@
 ---
-/**
- * NewsletterForm component
- *
- * Progressive enhancement form that works with or without JavaScript.
- * With JS: uses fetch API for non-blocking submission.
- * Without JS: falls back to native form submission.
- */
+import type { Lang } from "../lib/i18n";
+
+interface Props {
+  lang?: Lang;
+}
+
+const { lang = "ja" } = Astro.props;
+
+const labels = {
+  ja: {
+    placeholder: "メールアドレス",
+    ariaLabel: "メールアドレス",
+    submitBtn: "購読",
+    submitting: "送信中...",
+    emptyError: "メールアドレスを入力してください",
+    successMsg: "購読ありがとうございます！確認メールをお送りしました。",
+    genericError: "購読に失敗しました。もう一度お試しください。",
+    networkError: "エラーが発生しました。もう一度お試しください。",
+  },
+  en: {
+    placeholder: "Email address",
+    ariaLabel: "Email address",
+    submitBtn: "Subscribe",
+    submitting: "Sending...",
+    emptyError: "Please enter your email address",
+    successMsg: "Thank you for subscribing! A confirmation email has been sent.",
+    genericError: "Subscription failed. Please try again.",
+    networkError: "An error occurred. Please try again.",
+  },
+};
+
+const label = labels[lang];
 ---
 
 <div class="newsletter-form-wrapper">
@@ -19,14 +44,14 @@
       <input
         type="email"
         name="email"
-        placeholder="メールアドレス"
+        placeholder={label.placeholder}
         required
         class="email-input"
-        aria-label="メールアドレス"
+        aria-label={label.ariaLabel}
       />
-      <button type="submit" class="submit-btn">購読</button>
+      <button type="submit" class="submit-btn">{label.submitBtn}</button>
     </div>
-    <div id="form-message" class="form-message" aria-live="polite"></div>
+    <div id="form-message" class="form-message" aria-live="polite" data-lang={lang}></div>
   </form>
 </div>
 
@@ -129,6 +154,28 @@
   const emailInput = form.querySelector("input[name='email']") as HTMLInputElement;
   const submitBtn = form.querySelector("button[type='submit']") as HTMLButtonElement;
   const messageEl = document.getElementById("form-message") as HTMLDivElement;
+  const lang = messageEl.dataset.lang || "ja";
+
+  const labels = {
+    ja: {
+      submitting: "送信中...",
+      submitBtn: "購読",
+      emptyError: "メールアドレスを入力してください",
+      successMsg: "購読ありがとうございます！確認メールをお送りしました。",
+      genericError: "購読に失敗しました。もう一度お試しください。",
+      networkError: "エラーが発生しました。もう一度お試しください。",
+    },
+    en: {
+      submitting: "Sending...",
+      submitBtn: "Subscribe",
+      emptyError: "Please enter your email address",
+      successMsg: "Thank you for subscribing! A confirmation email has been sent.",
+      genericError: "Subscription failed. Please try again.",
+      networkError: "An error occurred. Please try again.",
+    },
+  };
+
+  const label = labels[lang as keyof typeof labels] || labels.ja;
 
   if (form) {
     form.addEventListener("submit", async (e: SubmitEvent) => {
@@ -136,12 +183,12 @@
 
       const email = emailInput.value.trim();
       if (!email) {
-        showMessage("メールアドレスを入力してください", "error");
+        showMessage(label.emptyError, "error");
         return;
       }
 
       submitBtn.disabled = true;
-      submitBtn.textContent = "送信中...";
+      submitBtn.textContent = label.submitting;
 
       try {
         const response = await fetch("/api/newsletter/subscribe", {
@@ -153,26 +200,20 @@
         });
 
         if (response.ok) {
-          showMessage(
-            "購読ありがとうございます！確認メールをお送りしました。",
-            "success"
-          );
+          showMessage(label.successMsg, "success");
           emailInput.value = "";
         } else {
           const data = await response.json() as { error?: string };
           showMessage(
-            data.error || "購読に失敗しました。もう一度お試しください。",
+            data.error || label.genericError,
             "error"
           );
         }
       } catch {
-        showMessage(
-          "エラーが発生しました。もう一度お試しください。",
-          "error"
-        );
+        showMessage(label.networkError, "error");
       } finally {
         submitBtn.disabled = false;
-        submitBtn.textContent = "購読";
+        submitBtn.textContent = label.submitBtn;
       }
     });
   }

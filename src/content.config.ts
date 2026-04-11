@@ -21,6 +21,7 @@ const articles = defineCollection({
     trustLevel: trustLevelSchema,
     tags: z.array(z.string()).default([]),
     draft: z.boolean().default(false),
+    lang: z.enum(["ja", "en"]).default("ja"),
   }),
 });
 
