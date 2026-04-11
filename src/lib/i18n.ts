@@ -51,6 +51,22 @@ export function getLangFromPath(pathname: string): Lang {
   return "ja";
 }
 
+/**
+ * Returns the Content Collection ID of the counterpart article in the other language.
+ * - ja → en: appends ".en" (e.g. "2026-04-10" → "2026-04-10.en")
+ * - en → ja: strips the ".en" suffix (e.g. "2026-04-10.en" → "2026-04-10")
+ */
+export function getCounterpartArticleId(id: string, currentLang: Lang): string {
+  if (currentLang === "ja") {
+    return `${id}.en`;
+  }
+  // en → ja: remove trailing ".en" if present (defensive: return as-is otherwise)
+  if (id.endsWith(".en")) {
+    return id.slice(0, -3);
+  }
+  return id;
+}
+
 export function localizePath(path: string, lang: Lang): string {
   const cleanPath = path.startsWith("/") ? path : `/${path}`;
 

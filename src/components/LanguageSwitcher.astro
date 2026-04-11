@@ -3,11 +3,24 @@ import { localizePath, type Lang } from "../lib/i18n";
 
 interface Props {
   currentLang: Lang;
+  /**
+   * Explicit href for the alternate-language link.
+   * - undefined (default): falls back to localizePath(pathname, otherLang)
+   * - string: uses the provided value as the href
+   * - null: renders nothing (counterpart article does not exist)
+   */
+  alternateHref?: string | null;
 }
 
-const { currentLang } = Astro.props;
+const { currentLang, alternateHref } = Astro.props;
+
+// null means the counterpart page does not exist; render nothing.
+if (alternateHref === null) {
+  return;
+}
+
 const otherLang = currentLang === "ja" ? "en" : "ja";
-const otherLangPath = localizePath(Astro.url.pathname, otherLang);
+const otherLangPath = alternateHref ?? localizePath(Astro.url.pathname, otherLang);
 ---
 
 <div class="lang-switcher">

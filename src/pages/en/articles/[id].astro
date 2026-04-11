@@ -4,6 +4,7 @@ import BaseLayout from "../../../layouts/BaseLayout.astro";
 import { getTrustLabel, getTrustColor } from "../../../constants/trustLevels";
 import { formatDate } from "../../../utils/date";
 import { computeArticleQualityFromData } from "../../../lib/quality";
+import { getCounterpartArticleId } from "../../../lib/i18n";
 import { env } from "cloudflare:workers";
 
 export const prerender = false;
@@ -59,6 +60,18 @@ const qualityTooltip = [
   `Trust level: +${quality.breakdown.trustLevel}`,
   `Community notes adjustment: ${notesPenaltyDisplay}`,
 ].join(" | ");
+
+// Resolve the counterpart Japanese article, if it exists.
+// ja article ID is the en ID with ".en" removed (e.g. "2026-04-10.en" → "2026-04-10")
+const counterpartId = getCounterpartArticleId(article.id, "en");
+const counterpart = allArticles.find(
+  (a) => a.id === counterpartId && a.data.lang === "ja"
+);
+// null → LanguageSwitcher hidden, alternate hreflang omitted
+// string → LanguageSwitcher links to the ja article detail page
+const alternateLangHref: string | null = counterpart
+  ? `/articles/${counterpart.id}`
+  : null;
 ---
 
 <BaseLayout
@@ -66,8 +79,7 @@ const qualityTooltip = [
   description={article.data.summary}
   ogType="article"
   lang="en"
-  showLanguageSwitcher={false}
-  showHreflang={false}
+  alternateLangHref={alternateLangHref}
 >
   <article class="article">
     <header class="article-header">
