@@ -136,9 +136,10 @@ export const POST: APIRoute = async ({ request }) => {
       { status: 200, headers: { "Content-Type": "application/json" } }
     );
   } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
+    // Log detailed error server-side; return generic error to client
+    console.error("[post-bluesky]", err);
     return new Response(
-      JSON.stringify({ ok: false, error: message }),
+      JSON.stringify({ ok: false, error: "Bluesky API error" }),
       { status: 502, headers: { "Content-Type": "application/json" } }
     );
   }

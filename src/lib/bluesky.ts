@@ -83,12 +83,13 @@ interface BlueskyPostRecord {
 /**
  * Calculate the UTF-8 byte start and end positions of a substring within text.
  * Used for building facets (rich text formatting) in Bluesky posts.
+ * Searches for the last occurrence of the substring (URL typically appears once at the end).
  */
 function getByteIndices(
   text: string,
   substring: string
 ): { start: number; end: number } | null {
-  const index = text.indexOf(substring);
+  const index = text.lastIndexOf(substring);
   if (index === -1) return null;
 
   const encoder = new TextEncoder();
@@ -173,10 +174,25 @@ export async function postToBluesky(
 }
 
 /**
+ * Helper: count the length of a string in codepoints (not UTF-16 code units).
+ */
+function codepointLength(s: string): number {
+  return Array.from(s).length;
+}
+
+/**
+ * Helper: slice a string by codepoints (not UTF-16 code units).
+ */
+function codepointSlice(s: string, end: number): string {
+  return Array.from(s).slice(0, end).join("");
+}
+
+/**
  * Build a Bluesky post text from article metadata.
  *
- * The text is constructed to fit within Bluesky's 300 grapheme limit
- * (approximated as max 300 characters for simplicity).
+ * The text is constructed to fit within Bluesky's 300 grapheme limit.
+ * Length calculations are done in codepoints to correctly handle emoji and other
+ * multi-unit Unicode characters (e.g., "📝" as a single codepoint, not two code units).
  *
  * Format:
  * ```
@@ -194,34 +210,30 @@ export function buildBlueskyPostText(
   url: string,
   ctaText: string
 ): string {
-  const maxLength = 300;
+  const BLUESKY_MAX_GRAPHEMES = 300;
 
-  // Start with title, two newlines, CTA, and URL
+  // Build the fixed parts around the summary
   const ctaPart = `\n\n${ctaText}\n${url}`;
-  const header = title;
 
-  // Calculate available space for summary
-  const overhead = header.length + ctaPart.length + 1; // +1 for newline before summary
-  const availableForSummary = maxLength - overhead;
+  // Calculate overhead in codepoints (all parts except summary)
+  const headerCodepoints = codepointLength(title);
+  const ctaPartCodepoints = codepointLength(ctaPart);
+  const newlineBeforeSummary = 2; // "\n\n"
+  const totalOverhead = headerCodepoints + newlineBeforeSummary + ctaPartCodepoints;
 
+  // Available space for summary in codepoints
+  const availableForSummary = BLUESKY_MAX_GRAPHEMES - totalOverhead;
+
+  // Truncate summary if needed, with ellipsis
   let finalSummary = summary;
-  if (availableForSummary < summary.length) {
-    // Truncate summary and add ellipsis
-    finalSummary = summary.slice(0, Math.max(0, availableForSummary - 1)) + "…";
+  const summaryCodepoints = codepointLength(summary);
+  if (availableForSummary < summaryCodepoints) {
+    const maxSummaryCodepoints = Math.max(0, availableForSummary - 1); // -1 for ellipsis
+    finalSummary = codepointSlice(summary, maxSummaryCodepoints) + "…";
   }
 
-  const text = `${header}\n\n${finalSummary}${ctaPart}`;
-
-  // Ensure final text doesn't exceed limit
-  if (text.length > maxLength) {
-    // If still too long, truncate summary more aggressively
-    const extraOverhead = text.length - maxLength;
-    finalSummary = summary.slice(
-      0,
-      Math.max(0, availableForSummary - extraOverhead - 1)
-    );
-    return `${header}\n\n${finalSummary}…${ctaPart}`;
-  }
+  // Build final text
+  const text = `${title}\n\n${finalSummary}${ctaPart}`;
 
   return text;
 }
