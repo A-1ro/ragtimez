@@ -40,7 +40,7 @@ export const POST: APIRoute = async ({ request }) => {
   // CSRF check: verify Origin matches SITE_URL.
   const origin = request.headers.get("Origin");
   const siteUrl = new URL(env.SITE_URL);
-  if (origin && !origin.startsWith(siteUrl.origin)) {
+  if (!origin || !origin.startsWith(siteUrl.origin)) {
     return new Response(
       JSON.stringify({ error: "CSRF validation failed" }),
       { status: 403, headers: { "Content-Type": "application/json" } }

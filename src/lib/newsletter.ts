@@ -11,6 +11,18 @@
 import { timingSafeEqual } from "./auth";
 
 /**
+ * Escape HTML special characters to prevent XSS attacks.
+ */
+function escapeHtml(str: string): string {
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+/**
  * Represents a newsletter subscriber.
  */
 export interface Subscriber {
@@ -244,6 +256,12 @@ export function generateArticleEmailHtml(
   articleUrl: string,
   unsubscribeUrl: string
 ): string {
+  // Escape user-provided content to prevent XSS attacks.
+  const escapedTitle = escapeHtml(articleTitle);
+  const escapedSummary = escapeHtml(articleSummary);
+  const escapedArticleUrl = escapeHtml(articleUrl);
+  const escapedUnsubscribeUrl = escapeHtml(unsubscribeUrl);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -269,12 +287,12 @@ export function generateArticleEmailHtml(
       <p style="margin: 8px 0 0; color: #666; font-size: 0.875rem;">新着記事をお知らせします</p>
     </div>
     <div class="article">
-      <h2>${articleTitle}</h2>
-      <p>${articleSummary}</p>
-      <a href="${articleUrl}" class="cta-btn">記事を読む</a>
+      <h2>${escapedTitle}</h2>
+      <p>${escapedSummary}</p>
+      <a href="${escapedArticleUrl}" class="cta-btn">記事を読む</a>
     </div>
     <div class="footer">
-      <p>RAGtimeZニュースレターの配信を停止したい場合は、<a href="${unsubscribeUrl}">こちら</a>から購読を解除できます。</p>
+      <p>RAGtimeZニュースレターの配信を停止したい場合は、<a href="${escapedUnsubscribeUrl}">こちら</a>から購読を解除できます。</p>
       <p>&copy; RAGtimeZ. All rights reserved.</p>
     </div>
   </div>

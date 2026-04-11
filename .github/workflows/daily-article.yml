@@ -106,9 +106,9 @@ jobs:
             exit 0
           fi
 
-          # Extract article frontmatter using sed/awk
-          TITLE=$(sed -n 's/^title: //p' "$ARTICLE_FILE" | head -1)
-          SUMMARY=$(sed -n 's/^summary: //p' "$ARTICLE_FILE" | head -1)
+          # Extract article frontmatter using sed (remove leading/trailing quotes from YAML values)
+          TITLE=$(sed -n 's/^title: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
+          SUMMARY=$(sed -n 's/^summary: "\(.*\)"$/\1/p' "$ARTICLE_FILE" | head -1)
 
           # Extract slug from filename (e.g., 2026-04-11-article-slug.md -> 2026-04-11-article-slug)
           SLUG=$(basename "$ARTICLE_FILE" .md)
@@ -119,8 +119,16 @@ jobs:
           fi
 
           echo "Sending newsletter for article: $SLUG"
+
+          # Build JSON payload safely using jq
+          PAYLOAD=$(jq -n \
+            --arg slug "$SLUG" \
+            --arg title "$TITLE" \
+            --arg summary "$SUMMARY" \
+            '{articleSlug: $slug, articleTitle: $title, articleSummary: $summary}')
+
           curl -s -f -X POST "$NEWSLETTER_SEND_URL" \
             -H "Authorization: Bearer $INTERNAL_API_TOKEN" \
             -H "Content-Type: application/json" \
-            -d "{\"articleSlug\":\"$SLUG\",\"articleTitle\":\"$TITLE\",\"articleSummary\":\"$SUMMARY\"}" \
+            -d "$PAYLOAD" \
             --max-time 60 || echo "Newsletter send failed (continuing)"
