@@ -84,5 +84,12 @@ declare namespace App {
   interface Locals extends Runtime {
     /** Populated by middleware when a valid session cookie is present. */
     user?: import("./lib/session").UserSession;
+    /**
+     * True when the logged-in user's GitHub ID appears in the
+     * ADMIN_GITHUB_IDS environment variable.  Always false when the user is
+     * not logged in or when ADMIN_GITHUB_IDS is unset.
+     * Set by src/middleware.ts on every request.
+     */
+    isAdmin?: boolean;
   }
 }
