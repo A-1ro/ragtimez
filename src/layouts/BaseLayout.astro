@@ -12,6 +12,14 @@ interface Props {
   lang?: Lang;
   showLanguageSwitcher?: boolean;
   showHreflang?: boolean;
+  /**
+   * Explicit href for the alternate-language link used in both LanguageSwitcher
+   * and hreflang <link> tags.
+   * - undefined (default): falls back to localizePath(pathname, otherLang)
+   * - string: uses the provided value directly
+   * - null: hides LanguageSwitcher and omits the alternate hreflang tag
+   */
+  alternateLangHref?: string | null;
 }
 
 const {
@@ -23,7 +31,29 @@ const {
   lang = getLangFromPath(Astro.url.pathname),
   showLanguageSwitcher = true,
   showHreflang = true,
+  alternateLangHref,
 } = Astro.props;
+
+// When alternateLangHref is null, counterpart page does not exist:
+// suppress the switcher and the alternate hreflang tag.
+const effectiveShowLanguageSwitcher =
+  showLanguageSwitcher && alternateLangHref !== null;
+const effectiveShowHreflang =
+  showHreflang && alternateLangHref !== null;
+
+// Build explicit alternate paths for hreflang output.
+const otherLang: Lang = lang === "ja" ? "en" : "ja";
+// The "other language" URL: prefer the explicit override when given.
+const hreflangOtherPath =
+  typeof alternateLangHref === "string"
+    ? alternateLangHref
+    : localizePath(Astro.url.pathname, otherLang);
+const hreflangCurrentPath = localizePath(Astro.url.pathname, lang);
+// x-default should always point to the ja canonical URL.
+// When lang === "ja", hreflangCurrentPath IS the ja path.
+// When lang === "en", hreflangOtherPath holds the ja counterpart URL
+// (either the explicit alternateLangHref override or localizePath(..., "ja")).
+const hreflangJaPath = lang === "ja" ? hreflangCurrentPath : hreflangOtherPath;
 
 const siteName = "RAGtimeZ";
 const user = Astro.locals.user;
@@ -48,11 +78,11 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     <meta property="og:locale" content={lang === "en" ? "en_US" : "ja_JP"} />
 
     <!-- hreflang: alternate language links -->
-    {showHreflang && (
+    {effectiveShowHreflang && (
       <>
-        <link rel="alternate" hreflang="ja" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
-        <link rel="alternate" hreflang="en" href={new URL(localizePath(Astro.url.pathname, "en"), Astro.site ?? Astro.url.origin).href} />
-        <link rel="alternate" hreflang="x-default" href={new URL(localizePath(Astro.url.pathname, "ja"), Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang={lang} href={new URL(hreflangCurrentPath, Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang={otherLang} href={new URL(hreflangOtherPath, Astro.site ?? Astro.url.origin).href} />
+        <link rel="alternate" hreflang="x-default" href={new URL(hreflangJaPath, Astro.site ?? Astro.url.origin).href} />
       </>
     )}
 
@@ -405,7 +435,9 @@ const isAdmin = Astro.locals.isAdmin ?? false;
             </svg>
             RSS
           </a>
-          {showLanguageSwitcher && <LanguageSwitcher currentLang={lang} />}
+          {effectiveShowLanguageSwitcher && (
+            <LanguageSwitcher currentLang={lang} alternateHref={alternateLangHref} />
+          )}
         </div>
         <div class="nav-auth">
           {user ? (
