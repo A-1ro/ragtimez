@@ -145,6 +145,66 @@ All HTML email templates:
 - Local dev: `npm run pages:dev` (loads Cloudflare bindings)
 - Regular dev (no bindings): `npm run dev`
 
+## D1 Database Patterns
+
+### Query with computed counts (LEFT JOIN subquery)
+```sql
+SELECT u.*, COALESCE(c.cnt, 0) AS note_count
+FROM users u
+LEFT JOIN (
+  SELECT author_github_id, COUNT(*) AS cnt
+  FROM notes
+  GROUP BY author_github_id
+) c ON c.author_github_id = u.github_id
+WHERE ...
+```
+
+### Case-insensitive string lookup in D1/SQLite
+```sql
+WHERE LOWER(u.username) = LOWER(?)
+```
+
+### Dynamic UPDATE (partial update without overwriting unset fields)
+Build the SQL template string dynamically before calling `.prepare()`, using a
+subquery to preserve existing values for omitted fields:
+```sql
+SET col = (SELECT col FROM table WHERE id = ?)   -- if field not in request
+SET col = ?                                        -- if field in request
+```
+Each branch produces exactly one `?` bound to its corresponding value.
+
+### Upsert preserving profile columns (INSERT OR REPLACE pitfall)
+`INSERT OR REPLACE` deletes then re-inserts, so all columns must be supplied.
+Use COALESCE subqueries to preserve nullable profile columns when upserting users:
+```sql
+INSERT OR REPLACE INTO users (github_id, username, avatar_url, github_url, ...)
+VALUES (?, ?, ?, COALESCE((SELECT github_url FROM users WHERE github_id = ?), NULL), ...)
+```
+
+## URL Validation (Security)
+Always use URL parsing (not `startsWith`) to validate hostnames.  This prevents
+the `github.com.evil.com` bypass.  Pattern from `src/pages/api/auth/callback.ts`:
+```typescript
+let parsed: URL;
+try { parsed = new URL(input); } catch { /* invalid */ }
+if (parsed.protocol !== "https:" || !allowedHostnames.includes(parsed.hostname)) {
+  // reject
+}
+```
+
+## Profile & Badge Feature (Issue #14)
+- D1 migration: `migrations/0003_add_user_profiles.sql` — ALTER TABLE adds nullable columns
+- Badge logic: `src/lib/contributorBadge.ts` — `getContributorRank`, `getContributorBadge`
+- URL validation: `src/lib/profileUrls.ts` — `validateProfileUrl` with hostname allowlist
+- API routes: `src/pages/api/profile/[username].ts` (GET, public) and `src/pages/api/profile/index.ts` (PATCH, auth required)
+- Profile page: `src/pages/profile/[username].astro` — server-side D1 query, edit form for owner
+- Article page updated: `src/pages/articles/[id].astro` — badge + username link in renderNote
+
+## Vercel/Next.js Plugin Recommendations — DO NOT APPLY
+The `posttooluse-validate` hook fires Next.js 16 recommendations (e.g. "await params",
+"await searchParams") on Astro files. These DO NOT apply — this is an Astro project
+on Cloudflare Workers where params/searchParams are synchronous.
+
 ## Project Context
 
 - **Framework**: Astro SSR with Cloudflare Pages adapter

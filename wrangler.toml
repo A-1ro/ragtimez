@@ -32,3 +32,8 @@ head_sampling_rate = 1
 binding = "AUTH_KV"
 id = "dee444cd9a8545c096aa7727217d7320"
 preview_id = "c4f39ef696eb4e10887031b9080765fc"
+
+[[kv_namespaces]]
+binding = "SUBSCRIBERS_KV"
+id = "7cf4466793bd46b788220060c3fbc7ce"
+preview_id = "df986b4b4a344fb48837bf532ad37f13"
