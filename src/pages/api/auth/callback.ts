@@ -147,6 +147,36 @@ export const GET: APIRoute = async ({ request }) => {
     return new Response("Unexpected avatar URL format", { status: 502 });
   }
 
+  // Upsert the user record into D1 so that the profile page and FK constraints
+  // work correctly from the very first login — before the user posts any note.
+  //
+  // Uses a true UPSERT (ON CONFLICT DO UPDATE) rather than INSERT OR REPLACE so
+  // that existing notes rows referencing this github_id are never orphaned by a
+  // DELETE+INSERT cycle, and so that profile columns (bio, *_url) set by the
+  // user are not overwritten on subsequent logins.
+  //
+  // DB may be undefined in the local `npm run dev` environment (no Cloudflare
+  // bindings), so we skip gracefully rather than blocking the OAuth flow.
+  if (!env.DB) {
+    console.warn("[auth/callback] DB binding is not available; skipping users upsert");
+  } else {
+    try {
+      await env.DB.prepare(
+        `INSERT INTO users (github_id, username, avatar_url, created_at)
+         VALUES (?, ?, ?, datetime('now'))
+         ON CONFLICT(github_id) DO UPDATE SET
+           username   = excluded.username,
+           avatar_url = excluded.avatar_url`
+      )
+        .bind(String(userData.id), userData.login, userData.avatar_url)
+        .run();
+    } catch (err) {
+      // Log but do not block session creation — a failed upsert must not
+      // prevent the user from logging in.
+      console.error("[auth/callback] users upsert failed", { error: String(err) });
+    }
+  }
+
   // Create a server-side session and issue a cookie.
   const sessionId = await createSession(env.AUTH_KV, {
     githubId: String(userData.id),
