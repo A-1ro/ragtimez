@@ -1,0 +1,503 @@
+---
+/**
+ * Admin quality trends dashboard — /admin/quality
+ *
+ * Auth-gated: requires a valid Bearer token matching INTERNAL_API_TOKEN.
+ * Access: Authorization: Bearer <token>  (header only — never via query param)
+ *
+ * Renders:
+ *   - Summary stats (average score, count per grade)
+ *   - A minimal CSS bar chart of daily quality scores
+ *   - A per-article table sorted by date desc
+ */
+import { getCollection } from "astro:content";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { timingSafeEqual } from "../../lib/auth";
+import { computeArticleQualityFromData, type QualityScore } from "../../lib/quality";
+import { env } from "cloudflare:workers";
+
+export const prerender = false;
+
+// ---------------------------------------------------------------------------
+// Auth check — Authorization: Bearer <token> header only.
+// Query-parameter tokens are intentionally not supported: they appear in
+// Cloudflare access logs and browser history in plain text.
+// ---------------------------------------------------------------------------
+const authHeader = Astro.request.headers.get("authorization") ?? "";
+const providedToken = authHeader.startsWith("Bearer ")
+  ? authHeader.slice("Bearer ".length).trim()
+  : "";
+
+const serverToken = env.INTERNAL_API_TOKEN ?? "";
+const authorized =
+  serverToken.length > 0 && timingSafeEqual(providedToken, serverToken);
+
+if (!authorized) {
+  return new Response(
+    JSON.stringify({ error: "Unauthorized" }),
+    {
+      status: 401,
+      headers: {
+        "Content-Type": "application/json",
+        "WWW-Authenticate": 'Bearer realm="RAGtimeZ Admin"',
+      },
+    }
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Load all (non-draft) articles
+// ---------------------------------------------------------------------------
+const allArticles = await getCollection("articles", ({ data }) => !data.draft);
+
+// Sort newest first
+allArticles.sort(
+  (a, b) => b.data.date.getTime() - a.data.date.getTime()
+);
+
+// ---------------------------------------------------------------------------
+// Fetch note counts from D1 in a single query
+// ---------------------------------------------------------------------------
+type NoteCountRow = { article_slug: string; cnt: number };
+const noteCountMap = new Map<string, number>();
+
+try {
+  if (env.DB) {
+    const result = await env.DB.prepare(
+      "SELECT article_slug, COUNT(*) AS cnt FROM notes GROUP BY article_slug"
+    ).all<NoteCountRow>();
+    for (const row of result.results ?? []) {
+      noteCountMap.set(row.article_slug, row.cnt);
+    }
+  }
+} catch {
+  // Non-fatal: DB unavailable in local dev
+}
+
+// ---------------------------------------------------------------------------
+// Compute quality scores for all articles
+// ---------------------------------------------------------------------------
+type ArticleQualityRow = {
+  id: string;
+  title: string;
+  date: Date;
+  score: QualityScore;
+  sourceCount: number;
+  officialSourceCount: number;
+  noteCount: number;
+};
+
+const rows: ArticleQualityRow[] = allArticles.map((article) => {
+  const noteCount = noteCountMap.get(article.id) ?? 0;
+  const score = computeArticleQualityFromData(article.data, noteCount);
+  const officialSourceCount = article.data.sources.filter(
+    (s) => s.type === "official"
+  ).length;
+  return {
+    id: article.id,
+    title: article.data.title,
+    date: article.data.date,
+    score,
+    sourceCount: article.data.sources.length,
+    officialSourceCount,
+    noteCount,
+  };
+});
+
+// ---------------------------------------------------------------------------
+// Summary statistics
+// ---------------------------------------------------------------------------
+const totalArticles = rows.length;
+const avgScore =
+  totalArticles > 0
+    ? Math.round(rows.reduce((sum, r) => sum + r.score.score, 0) / totalArticles)
+    : 0;
+
+const gradeCounts = { A: 0, B: 0, C: 0, D: 0 };
+for (const r of rows) {
+  gradeCounts[r.score.grade]++;
+}
+
+// ---------------------------------------------------------------------------
+// Bar chart data — up to the 30 most recent articles (oldest → newest for
+// left-to-right chronological display)
+// ---------------------------------------------------------------------------
+const chartRows = rows.slice(0, 30).reverse();
+
+// Grade badge colour helper (must be a plain JS function, not TS const map,
+// so Astro can evaluate it in the template without import issues)
+function gradeColor(grade: string): string {
+  if (grade === "A") return "#22c55e";
+  if (grade === "B") return "#3d8ef5";
+  if (grade === "C") return "#f59e0b";
+  return "#ef4444";
+}
+
+function formatDate(date: Date): string {
+  return date.toLocaleDateString("ja-JP", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+}
+
+function officialRatioPct(officialCount: number, total: number): string {
+  if (total === 0) return "—";
+  return `${Math.round((officialCount / total) * 100)}%`;
+}
+---
+
+<BaseLayout title="品質スコア管理 | RAGtimeZ" description="記事品質スコアのトレンドダッシュボード">
+  <div class="admin-page">
+    <header class="page-header">
+      <a href="/" class="back-link">← トップへ戻る</a>
+      <h1 class="page-title">品質スコア管理</h1>
+      <p class="page-subtitle">記事品質スコアのトレンドと詳細</p>
+    </header>
+
+    <!-- Summary stats -->
+    <section class="stats-grid" aria-label="サマリー統計">
+      <div class="stat-card">
+        <div class="stat-value">{totalArticles}</div>
+        <div class="stat-label">記事数</div>
+      </div>
+      <div class="stat-card">
+        <div class="stat-value">{avgScore}</div>
+        <div class="stat-label">平均スコア</div>
+      </div>
+      {(["A", "B", "C", "D"] as const).map((grade) => (
+        <div class="stat-card" style={`border-color: ${gradeColor(grade)}44;`}>
+          <div class="stat-value" style={`color: ${gradeColor(grade)};`}>
+            {gradeCounts[grade]}
+          </div>
+          <div class="stat-label">グレード {grade}</div>
+        </div>
+      ))}
+    </section>
+
+    <!-- Bar chart -->
+    {chartRows.length > 0 && (
+      <section class="chart-section" aria-label="品質スコアトレンド">
+        <h2 class="section-heading">スコアトレンド（直近{chartRows.length}記事）</h2>
+        <div class="bar-chart" role="img" aria-label="品質スコア棒グラフ">
+          {chartRows.map((row) => (
+            <div
+              class="bar-col"
+              title={`${row.title}\n${formatDate(row.date)}\nスコア: ${row.score.score} (${row.score.grade})`}
+            >
+              <div
+                class="bar"
+                style={`height: ${row.score.score}%; background-color: ${gradeColor(row.score.grade)};`}
+                aria-label={`${row.score.score}点`}
+              />
+              <span class="bar-label">{row.score.grade}</span>
+            </div>
+          ))}
+        </div>
+        <div class="chart-axis">
+          <span>0</span>
+          <span>50</span>
+          <span>100</span>
+        </div>
+      </section>
+    )}
+
+    <!-- Per-article table -->
+    <section class="table-section" aria-label="記事別品質スコア">
+      <h2 class="section-heading">記事一覧</h2>
+      {rows.length === 0 ? (
+        <p class="empty-state">記事がありません。</p>
+      ) : (
+        <div class="table-wrapper">
+          <table class="quality-table">
+            <thead>
+              <tr>
+                <th scope="col">日付</th>
+                <th scope="col">タイトル</th>
+                <th scope="col" class="num-col">スコア</th>
+                <th scope="col" class="num-col">グレード</th>
+                <th scope="col" class="num-col">ソース数</th>
+                <th scope="col" class="num-col">公式率</th>
+                <th scope="col" class="num-col">ノート数</th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((row) => (
+                <tr>
+                  <td class="date-col">
+                    <time datetime={row.date.toISOString()}>{formatDate(row.date)}</time>
+                  </td>
+                  <td class="title-col">
+                    <a href={`/articles/${row.id}`} class="article-link">{row.title}</a>
+                  </td>
+                  <td class="num-col">
+                    <span class="score-pill" style={`color: ${gradeColor(row.score.grade)};`}>
+                      {row.score.score}
+                    </span>
+                  </td>
+                  <td class="num-col">
+                    <span
+                      class="grade-badge"
+                      style={`background-color: ${gradeColor(row.score.grade)}22; color: ${gradeColor(row.score.grade)}; border-color: ${gradeColor(row.score.grade)}44;`}
+                    >
+                      {row.score.grade}
+                    </span>
+                  </td>
+                  <td class="num-col">{row.sourceCount}</td>
+                  <td class="num-col">{officialRatioPct(row.officialSourceCount, row.sourceCount)}</td>
+                  <td class="num-col">{row.noteCount}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </section>
+  </div>
+</BaseLayout>
+
+<style>
+  .admin-page {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 1.5rem 0 4rem;
+  }
+
+  .page-header {
+    margin-bottom: 2rem;
+  }
+
+  .back-link {
+    display: inline-block;
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    margin-bottom: 1rem;
+  }
+  .back-link:hover {
+    color: var(--color-accent-hover);
+    text-decoration: none;
+  }
+
+  .page-title {
+    margin: 0 0 0.25rem;
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 800;
+    letter-spacing: -0.02em;
+    color: var(--color-text);
+  }
+
+  .page-subtitle {
+    margin: 0;
+    font-size: 0.9375rem;
+    color: var(--color-muted);
+  }
+
+  /* --- Summary stats --- */
+  .stats-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+    gap: 1rem;
+    margin-bottom: 2.5rem;
+  }
+
+  .stat-card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    padding: 1rem 1.25rem;
+    text-align: center;
+  }
+
+  .stat-value {
+    font-size: 2rem;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    color: var(--color-text);
+    line-height: 1;
+    margin-bottom: 0.4rem;
+  }
+
+  .stat-label {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+  }
+
+  /* --- Bar chart --- */
+  .chart-section {
+    margin-bottom: 2.5rem;
+  }
+
+  .section-heading {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0 0 1rem;
+    color: var(--color-text);
+  }
+
+  .bar-chart {
+    display: flex;
+    align-items: flex-end;
+    gap: 4px;
+    height: 160px;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-bottom: none;
+    border-radius: 0.5rem 0.5rem 0 0;
+    padding: 0.75rem 0.75rem 0;
+    overflow-x: auto;
+  }
+
+  .bar-col {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+    flex: 1;
+    min-width: 18px;
+    height: 100%;
+    justify-content: flex-end;
+  }
+
+  .bar {
+    width: 100%;
+    border-radius: 2px 2px 0 0;
+    min-height: 2px;
+    transition: opacity 0.15s;
+  }
+
+  .bar-col:hover .bar {
+    opacity: 0.8;
+  }
+
+  .bar-label {
+    font-size: 0.6rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    padding-bottom: 2px;
+  }
+
+  .chart-axis {
+    display: flex;
+    justify-content: space-between;
+    padding: 0.25rem 0.75rem;
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-top: 1px dashed var(--color-border);
+    border-radius: 0 0 0.5rem 0.5rem;
+    font-size: 0.75rem;
+    color: var(--color-muted);
+  }
+
+  /* --- Table --- */
+  .table-section {
+    margin-bottom: 2rem;
+  }
+
+  .table-wrapper {
+    overflow-x: auto;
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+  }
+
+  .quality-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.9rem;
+  }
+
+  .quality-table thead {
+    background: var(--color-surface);
+  }
+
+  .quality-table th {
+    padding: 0.75rem 1rem;
+    text-align: left;
+    font-size: 0.8rem;
+    font-weight: 700;
+    color: var(--color-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    border-bottom: 1px solid var(--color-border);
+    white-space: nowrap;
+  }
+
+  .quality-table td {
+    padding: 0.75rem 1rem;
+    border-bottom: 1px solid var(--color-border);
+    vertical-align: middle;
+    color: var(--color-text);
+  }
+
+  .quality-table tbody tr:last-child td {
+    border-bottom: none;
+  }
+
+  .quality-table tbody tr:hover td {
+    background: var(--color-surface);
+  }
+
+  .date-col {
+    white-space: nowrap;
+    font-size: 0.8125rem;
+    color: var(--color-muted) !important;
+  }
+
+  .title-col {
+    min-width: 200px;
+  }
+
+  .num-col {
+    text-align: right;
+    white-space: nowrap;
+  }
+
+  .quality-table th.num-col {
+    text-align: right;
+  }
+
+  .article-link {
+    color: var(--color-text);
+    text-decoration: none;
+    font-size: 0.9rem;
+    transition: color 0.15s;
+  }
+  .article-link:hover {
+    color: var(--color-accent-hover);
+    text-decoration: underline;
+  }
+
+  .score-pill {
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .grade-badge {
+    display: inline-block;
+    padding: 0.15em 0.55em;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 700;
+    border: 1px solid;
+    white-space: nowrap;
+  }
+
+  .empty-state {
+    color: var(--color-muted);
+    font-style: italic;
+    padding: 2rem;
+    text-align: center;
+  }
+
+  @media (max-width: 600px) {
+    .admin-page {
+      padding: 1rem 0 3rem;
+    }
+    .stats-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+    .quality-table th,
+    .quality-table td {
+      padding: 0.6rem 0.75rem;
+    }
+  }
+</style>
