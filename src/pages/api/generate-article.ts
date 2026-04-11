@@ -238,7 +238,14 @@ async function generateWithLLM(
   date: string,
   topics: string[],
   pastArticles: { title: string; tags: string[]; date: string }[],
-): Promise<{ title: string; summary: string; tags: string[]; body: string; selectedTopic: string }> {
+): Promise<{
+  title: string;
+  summary: string;
+  tags: string[];
+  body: string;
+  selectedTopic: string;
+  selectedEntries: RssEntry[];
+}> {
   // --- Step 0: Topic selection ---
   const contextForSelection = buildContext(entries);
 
@@ -403,7 +410,12 @@ async function generateWithLLM(
   const body = extractText(bodyResponse).trim();
   if (!body) throw new Error("LLM returned empty body");
 
-  return { ...meta, body, selectedTopic: topicSelection.topic };
+  return {
+    ...meta,
+    body,
+    selectedTopic: topicSelection.topic,
+    selectedEntries,
+  };
 }
 
 /**
@@ -591,6 +603,7 @@ export const POST: APIRoute = async ({ request }) => {
     tags: string[];
     body: string;
     selectedTopic: string;
+    selectedEntries: RssEntry[];
   };
   try {
     const pastArticles = await loadRecentPastArticles(dateInput);
@@ -606,9 +619,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // --- Extract sources & trust level from selected topic entries -----------
-  // If topic selection was successful, sources reflect only relevant entries.
-  // If fallback was used, sources include all contextEntries.
-  const sources = extractSources(contextEntries);
+  // Sources reflect only the entries the LLM actually referenced in Step 0.
+  // If topic selection fell back (parse failure), selectedEntries equals all entries.
+  const sources = extractSources(llmResult.selectedEntries);
   const trustLevel = deriveTrustLevel(sources);
 
   // --- Assemble article -----------------------------------------------------
