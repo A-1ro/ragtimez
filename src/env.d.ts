@@ -41,6 +41,29 @@ declare namespace Cloudflare {
      * Create with: wrangler d1 create ragtimez-notes
      */
     DB: D1Database;
+    /**
+     * KV namespace for storing newsletter subscribers.
+     * Create with: wrangler kv namespace create SUBSCRIBERS_KV
+     */
+    SUBSCRIBERS_KV: KVNamespace;
+    /**
+     * Resend API key for sending emails.
+     * Get your API key from https://resend.com/api-keys
+     * Set via: wrangler pages secret put RESEND_API_KEY
+     */
+    RESEND_API_KEY: string;
+    /**
+     * Newsletter sender email address (must be verified in Resend).
+     * Set via: wrangler pages secret put NEWSLETTER_FROM_EMAIL
+     * Example: noreply@ragtimez.dev
+     */
+    NEWSLETTER_FROM_EMAIL: string;
+    /**
+     * Site URL for building unsubscribe links and article URLs.
+     * Set via: wrangler pages secret put SITE_URL
+     * Example: https://ragtimez.dev
+     */
+    SITE_URL: string;
   }
 }
 
