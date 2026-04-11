@@ -1,0 +1,71 @@
+---
+import BaseLayout from "../layouts/BaseLayout.astro";
+---
+
+<BaseLayout
+  title="404 - ページが見つかりません | RAGtimeZ"
+  description="お探しのページは見つかりませんでした。"
+>
+  <section class="not-found">
+    <p class="code" aria-hidden="true">404</p>
+    <h1 class="title">ページが見つかりません</h1>
+    <p class="description">
+      お探しのページは移動または削除された可能性があります。
+    </p>
+    <a href="/" class="home-link">トップへ戻る</a>
+  </section>
+</BaseLayout>
+
+<style>
+  .not-found {
+    text-align: center;
+    padding: 4rem 1rem 5rem;
+  }
+
+  .code {
+    font-family: var(--font-display);
+    font-size: clamp(4rem, 12vw, 7rem);
+    font-weight: 900;
+    line-height: 1;
+    margin: 0 0 0.5rem;
+    background: var(--gradient-azure);
+    -webkit-background-clip: text;
+    background-clip: text;
+    color: transparent;
+  }
+
+  .title {
+    font-family: var(--font-display);
+    font-size: clamp(1.5rem, 4vw, 2rem);
+    font-weight: 700;
+    margin: 0 0 1rem;
+    color: var(--color-text);
+  }
+
+  .description {
+    color: var(--color-muted);
+    margin: 0 0 2.5rem;
+    font-size: 1rem;
+  }
+
+  .home-link {
+    display: inline-flex;
+    align-items: center;
+    font-size: 0.9375rem;
+    font-weight: 600;
+    color: var(--color-accent-soft);
+    background: rgba(61, 142, 245, 0.08);
+    border: 1px solid rgba(61, 142, 245, 0.3);
+    border-radius: 0.5rem;
+    padding: 0.6em 1.4em;
+    text-decoration: none;
+    transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+  }
+  .home-link:hover {
+    background: var(--color-accent);
+    border-color: var(--color-accent);
+    color: #fff;
+    box-shadow: 0 0 16px rgba(61, 142, 245, 0.4);
+    text-decoration: none;
+  }
+</style>
