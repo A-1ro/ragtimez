@@ -185,22 +185,9 @@ export const POST: APIRoute = async ({ request, locals }) => {
     const noteId = crypto.randomUUID();
     const now = new Date().toISOString();
 
-    // Upsert user record (preserving created_at and profile columns)
-    await env.DB.prepare(
-      `INSERT OR REPLACE INTO users (github_id, username, avatar_url, github_url, x_url, linkedin_url, bio, created_at)
-       VALUES (
-         ?,
-         ?,
-         ?,
-         COALESCE((SELECT github_url   FROM users WHERE github_id = ?), NULL),
-         COALESCE((SELECT x_url        FROM users WHERE github_id = ?), NULL),
-         COALESCE((SELECT linkedin_url FROM users WHERE github_id = ?), NULL),
-         COALESCE((SELECT bio          FROM users WHERE github_id = ?), NULL),
-         COALESCE((SELECT created_at   FROM users WHERE github_id = ?), datetime('now'))
-       )`
-    )
-      .bind(githubId, username, avatarUrl, githubId, githubId, githubId, githubId, githubId)
-      .run();
+    // The users row is guaranteed to exist at this point: it is upserted by
+    // the OAuth callback (src/pages/api/auth/callback.ts) on every login,
+    // before any note can be posted.
 
     // Insert note
     await env.DB.prepare(
