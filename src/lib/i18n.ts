@@ -18,6 +18,19 @@ export const translations: Record<Lang, Record<string, string>> = {
     newsletterSubscribe: "購読する",
     languageSwitcherJa: "日本語",
     languageSwitcherEn: "English",
+    // Notes API error messages
+    noteErrMissingArticle: "クエリパラメータ「article」が必要です",
+    noteErrDbUnavailable: "この環境ではDBバインディングを利用できません",
+    noteErrInvalidJson: "リクエストボディのJSONが不正です",
+    noteErrArticleRequired: "article_slug は必須です",
+    noteErrArticleTooLong: "article_slug は200文字以内で入力してください",
+    noteErrBodyRequired: "body は必須です（1文字以上）",
+    noteErrBodyTooLong: "body は1000文字以内で入力してください",
+    noteErrUnauthorized: "認証が必要です",
+    noteErrForbidden: "この操作を行う権限がありません",
+    noteErrNotFound: "ノートが見つかりません",
+    noteErrIdRequired: "ノートIDが必要です",
+    noteErrInternal: "内部サーバーエラーが発生しました",
   },
   en: {
     siteTagline: "AI-powered daily tech blog",
@@ -33,6 +46,19 @@ export const translations: Record<Lang, Record<string, string>> = {
     newsletterSubscribe: "Subscribe",
     languageSwitcherJa: "日本語",
     languageSwitcherEn: "English",
+    // Notes API error messages
+    noteErrMissingArticle: "Missing required query parameter: article",
+    noteErrDbUnavailable: "DB binding is not available in this environment",
+    noteErrInvalidJson: "Invalid JSON in request body",
+    noteErrArticleRequired: "article_slug is required",
+    noteErrArticleTooLong: "article_slug must not exceed 200 characters",
+    noteErrBodyRequired: "body is required and must contain at least 1 character",
+    noteErrBodyTooLong: "body must not exceed 1000 characters",
+    noteErrUnauthorized: "Unauthorized: authentication required",
+    noteErrForbidden: "Forbidden: you are not the author of this note",
+    noteErrNotFound: "Note not found",
+    noteErrIdRequired: "Note ID is required",
+    noteErrInternal: "Internal server error",
   },
 };
 
@@ -42,6 +68,31 @@ export function t(lang: Lang, key: string): string {
 
 export function isLang(value: string): value is Lang {
   return SUPPORTED_LANGS.includes(value as Lang);
+}
+
+/**
+ * Determines the response language for API routes.
+ *
+ * Priority:
+ *   1. `?lang=ja|en` query parameter
+ *   2. `Accept-Language` header (first tag: `en*` → "en", otherwise "ja")
+ *   3. Default: "ja"
+ */
+export function getLangFromRequest(request: Request): Lang {
+  const url = new URL(request.url);
+  const langParam = url.searchParams.get("lang");
+  if (langParam && isLang(langParam)) {
+    return langParam;
+  }
+
+  const acceptLanguage = request.headers.get("Accept-Language") ?? "";
+  // Parse the first language tag (e.g. "en-US,en;q=0.9,ja;q=0.8" → "en-US")
+  const firstTag = acceptLanguage.split(",")[0]?.split(";")[0]?.trim() ?? "";
+  if (firstTag.toLowerCase().startsWith("en")) {
+    return "en";
+  }
+
+  return DEFAULT_LANG;
 }
 
 export function getLangFromPath(pathname: string): Lang {

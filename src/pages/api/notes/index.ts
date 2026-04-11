@@ -1,5 +1,6 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
+import { getLangFromRequest, t } from "../../../lib/i18n";
 
 /**
  * Note object returned from the API.
@@ -45,20 +46,21 @@ export interface Note {
  *   500  – DB binding unavailable
  */
 export const GET: APIRoute = async ({ request, locals }) => {
+  const lang = getLangFromRequest(request);
   const { searchParams } = new URL(request.url);
   const articleSlug = searchParams.get("article")?.trim();
   const sort = searchParams.get("sort")?.trim() ?? "new";
 
   if (!articleSlug) {
     return new Response(
-      JSON.stringify({ error: "Missing required query parameter: article" }),
+      JSON.stringify({ error: t(lang, "noteErrMissingArticle") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (!env.DB) {
     return new Response(
-      JSON.stringify({ error: "DB binding is not available in this environment" }),
+      JSON.stringify({ error: t(lang, "noteErrDbUnavailable") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -148,7 +150,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
   } catch (err) {
     console.error("[api/notes] GET failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: t(lang, "noteErrInternal") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -179,17 +181,19 @@ export const GET: APIRoute = async ({ request, locals }) => {
  *   500  – DB binding unavailable or database error
  */
 export const POST: APIRoute = async ({ request, locals }) => {
+  const lang = getLangFromRequest(request);
+
   // Check authentication
   if (!locals.user) {
     return new Response(
-      JSON.stringify({ error: "Unauthorized: authentication required" }),
+      JSON.stringify({ error: t(lang, "noteErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (!env.DB) {
     return new Response(
-      JSON.stringify({ error: "DB binding is not available in this environment" }),
+      JSON.stringify({ error: t(lang, "noteErrDbUnavailable") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -200,7 +204,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
     body = await request.json();
   } catch {
     return new Response(
-      JSON.stringify({ error: "Invalid JSON in request body" }),
+      JSON.stringify({ error: t(lang, "noteErrInvalidJson") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -212,28 +216,28 @@ export const POST: APIRoute = async ({ request, locals }) => {
   // Validation
   if (!articleSlug || articleSlug.length === 0) {
     return new Response(
-      JSON.stringify({ error: "article_slug is required" }),
+      JSON.stringify({ error: t(lang, "noteErrArticleRequired") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (articleSlug.length > 200) {
     return new Response(
-      JSON.stringify({ error: "article_slug must not exceed 200 characters" }),
+      JSON.stringify({ error: t(lang, "noteErrArticleTooLong") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (!noteBody || noteBody.length === 0) {
     return new Response(
-      JSON.stringify({ error: "body is required and must contain at least 1 character" }),
+      JSON.stringify({ error: t(lang, "noteErrBodyRequired") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
 
   if (noteBody.length > 1000) {
     return new Response(
-      JSON.stringify({ error: "body must not exceed 1000 characters" }),
+      JSON.stringify({ error: t(lang, "noteErrBodyTooLong") }),
       { status: 400, headers: { "Content-Type": "application/json" } }
     );
   }
@@ -293,7 +297,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
   } catch (err) {
     console.error("[api/notes] POST failed", { error: String(err) });
     return new Response(
-      JSON.stringify({ error: "Internal server error" }),
+      JSON.stringify({ error: t(lang, "noteErrInternal") }),
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
