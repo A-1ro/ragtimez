@@ -374,10 +374,12 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         -webkit-backdrop-filter: blur(2px);
         z-index: 200;
         opacity: 0;
+        pointer-events: none;
         transition: opacity 0.25s ease;
       }
       .drawer-overlay.is-open {
         opacity: 1;
+        pointer-events: auto;
       }
 
       /* ---- Drawer panel ---- */
@@ -397,9 +399,11 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         padding: 1.25rem 1.25rem 2rem;
         gap: 0;
         overflow-y: auto;
+        visibility: hidden;
       }
       .drawer-panel.is-open {
         transform: translateX(0);
+        visibility: visible;
       }
 
       .drawer-header {
