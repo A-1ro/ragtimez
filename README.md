@@ -267,6 +267,56 @@ Expected response shape:
 }
 ```
 
+### GitHub OAuth & AUTH_KV Setup
+
+GitHub OAuth enables user login. Session tokens are stored in a Cloudflare KV namespace (`AUTH_KV`). In production, the KV binding is configured via the Cloudflare Dashboard — **not** via `wrangler.toml` (the KV block in `wrangler.toml` is intentionally left as a placeholder and is only used as a reference for local development with `wrangler pages dev`).
+
+#### Step 1 – Create a GitHub OAuth App
+
+1. Go to **GitHub** → **Settings** → **Developer settings** → **OAuth Apps** → **New OAuth App**.
+2. Fill in the fields:
+
+   | Field | Value |
+   |---|---|
+   | Application name | `RAGtimeZ` (or any name) |
+   | Homepage URL | `https://<your-pages-domain>` |
+   | Authorization callback URL | `https://<your-pages-domain>/api/auth/callback` |
+
+3. Click **Register application**.
+4. On the next screen, note your **Client ID** and generate a **Client Secret**.
+
+For local development with `wrangler pages dev`, set the callback URL to `http://localhost:8788/api/auth/callback` (you can add multiple callback URLs or create a separate OAuth App for local use).
+
+#### Step 2 – Create the AUTH_KV namespace
+
+```bash
+# Create the KV namespace (production)
+wrangler kv namespace create AUTH_KV
+
+# Create the KV namespace (preview / local wrangler pages dev)
+wrangler kv namespace create AUTH_KV --preview
+```
+
+Copy the returned namespace IDs and update the `AUTH_KV` entry in `wrangler.toml`:
+
+```toml
+[[kv_namespaces]]
+binding = "AUTH_KV"
+id = "<your-production-namespace-id>"
+preview_id = "<your-preview-namespace-id>"
+```
+
+> **Production note:** In production, the KV binding must also be configured in the Cloudflare Dashboard under **Workers & Pages** → your Pages project → **Settings** → **Bindings**. Add a KV namespace binding with variable name `AUTH_KV` pointing to the namespace you created above. The `wrangler.toml` entry is used only for local `wrangler pages dev` and does not affect the production deployment.
+
+#### Step 3 – Set the OAuth secrets
+
+```bash
+wrangler pages secret put GITHUB_CLIENT_ID
+wrangler pages secret put GITHUB_CLIENT_SECRET
+```
+
+Enter the Client ID and Client Secret from Step 1 when prompted. These secrets are automatically available to the Pages project at runtime via `context.locals.runtime.env`.
+
 ### Local development
 
 ```bash
