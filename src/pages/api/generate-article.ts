@@ -257,7 +257,7 @@ function buildTavilyQueries(entries: RssEntry[], date: string): string[] {
     queries.push(query);
   }
 
-  // エントリが少なくクエリが 1 件未満の場合は汎用フォールバッククエリを追加
+  // エントリが少なくクエリが 2 件未満の場合は汎用フォールバッククエリを追加
   if (queries.length < 2) {
     queries.push(`LLM RAG agent latest news ${year}`);
   }
@@ -468,7 +468,7 @@ async function generateWithLLM(
   const validIndices = topicSelection.indices.filter(
     (idx) => typeof idx === "number" && idx >= 1 && idx <= entries.length,
   );
-  const selectedEntries =
+  let selectedEntries =
     validIndices.length > 0
       ? validIndices.map((idx) => entries[idx - 1])
       : entries; // fallback to all if no valid indices
@@ -480,12 +480,15 @@ async function generateWithLLM(
   if (tavilyApiKey && topicSelection.topic) {
     try {
       const additionalQuery = topicSelection.topic;
-      console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery}"`);
+      console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery.slice(0, 200)}"`);
 
       const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
       console.log(`Tavily 追加検索結果: ${additionalSearchResults.length} 件`);
 
       if (additionalSearchResults.length > 0) {
+        // 追加検索結果を selectedEntries にマージして buildContext で参照可能にする
+        selectedEntries = mergeWithTavilyResults(selectedEntries, additionalSearchResults);
+
         // 追加検索結果から上位 3 件の URL を extract 対象とする（無料枠節約）
         const additionalUrls = additionalSearchResults
           .slice(0, 3)
@@ -930,7 +933,7 @@ export const POST: APIRoute = async ({ request }) => {
       lang,
       fullTextMap,
       // tavilyApiKey を渡すことで、トピック選定後の追加検索を有効にする
-      env.TAVILY_API_KEY ?? undefined,
+      env.TAVILY_API_KEY,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
