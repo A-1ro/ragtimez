@@ -1,4 +1,4 @@
-- [RSS Feed Implementation (Issue #10)](project_rss_issue10.md) — PR #34: content field absent from RSS items; site URL hardcoded to ragtimez.pages.dev
+- [RSS Feed Implementation (Issue #10, #66)](project_rss_issue10.md) — PR #116: article.rendered?.html unreliable in SSR; fixed with marked.parse(article.body)
 - [HTML Escaping Pattern in newsletter.ts](pattern_html_escaping.md) — asymmetry fixed in PR #98; new concern: escapeHtml on URL href can corrupt &-separated query params
 - [Query Parameter Token Auth Anti-Pattern](pattern_query_token_auth.md) — INTERNAL_API_TOKEN must only be accepted via Authorization header, never ?token= query param
 - [Admin Session Auth Pattern (PR #52)](pattern_admin_session_auth.md) — Bearer + GitHub OAuth 二経路認証パターンと ADMIN_GITHUB_IDS 未設定時のエッジケース

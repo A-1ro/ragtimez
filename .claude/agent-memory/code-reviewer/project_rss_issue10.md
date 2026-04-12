@@ -1,17 +1,22 @@
 ---
-name: RSS Feed Implementation (Issue #10)
-description: PR #34 implements RSS feed via @astrojs/rss; third review confirmed all acceptance criteria met including content field using article.rendered?.html
+name: RSS Feed Implementation (Issue #10, #66)
+description: PR #34 introduced RSS; PR #116 (issue-66) replaced article.rendered?.html with marked.parse(article.body) to fix content:encoded being absent in production
 type: project
 ---
 
-RSS feed was implemented in PR #34 (branch issue-10/feat/rss-feed). Third review conducted 2026-04-10.
+RSS feed implemented in PR #34. Content field bug (Issue #66) fixed in PR #116 (2026-04-12).
 
-Key decisions confirmed:
-- `@astrojs/rss` v4.0.18 used; relative item `link` paths are resolved against `site` by the library
-- `context.site` is populated by `astro.config.mjs` `site: "https://ragtimez.pages.dev"` — fallback to `new URL(context.url.origin)` covers local dev
-- `content: article.rendered?.html` is passed to RSS items — when `undefined`, the library's schema treats `content` as optional (z.string().optional()) and the item mapping skips it with `if (typeof result.content === "string")`, so undefined articles simply omit `content:encoded` rather than erroring
-- The `rendered` property is set by Astro's content collection loader after Markdown is parsed; for SSR (Cloudflare adapter with `output: "server"`), `getCollection` returns entries with `rendered` populated at request time
+**Root cause of Issue #66:** `article.rendered?.html` was undefined in production. Astro's glob loader calls `render()` at build/load time and stores `rendered` in the data store, but under the Cloudflare Pages SSR adapter this pre-rendered HTML was not reliably available at request time via `getCollection()` without explicitly calling `render(article)` per entry.
 
-**Why:** Issue #10 completion criteria explicitly lists `content` as required. This is now addressed by `article.rendered?.html`.
+**Fix (PR #116):** Replace `article.rendered?.html` with `marked.parse(article.body, { async: false }) as string` — a fresh synchronous Markdown→HTML conversion using `marked` v18.
 
-**How to apply:** In future RSS reviews, confirm content is rendered HTML (not raw Markdown) and that the library handles undefined gracefully — both confirmed correct in this implementation.
+Key confirmed facts:
+- `@astrojs/rss` v4.0.18 used; `content:encoded` is populated when `typeof result.content === "string"`
+- `@astrojs/rss` XML-escapes the content string (fast-xml-parser XMLBuilder) — HTML entities are escaped in output, which is RSS 2.0 compliant; RSS readers decode it correctly
+- `marked.parse(str, { async: false })` returns `string` (not Promise) when no async extensions are registered
+- `article.body` is typed as `string | undefined` in Astro Content Collections; the `article.body ? ... : undefined` guard is correct
+- `marked` v18 does NOT sanitize HTML by default — raw HTML blocks in Markdown pass through. For AI-generated articles this is acceptable since content is LLM-controlled, not user-supplied
+- `context.site` fallback to `new URL(context.url.origin)` still correct
+- `SITE_URL` env var populates `astro.config.mjs` `site` field in production
+
+**How to apply:** In future RSS reviews, do not assume `article.rendered` is populated — always verify whether `render(article)` is called before accessing `.rendered`. The `marked.parse(article.body)` pattern is now the established approach for RSS content generation.
