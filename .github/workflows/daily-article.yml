@@ -71,29 +71,42 @@ jobs:
           fi
 
           # --- Japanese article (required) ---
-          BEFORE_JA=$(ls src/content/articles/ 2>/dev/null | sort)
+          # Use md5sum-based snapshot so --force overwrites are detected as changes,
+          # not just new files (file-name-only comparison misses same-name overwrites).
+          BEFORE_JA=$(find src/content/articles/ -maxdepth 1 -type f -name '*.md' ! -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
           npm run generate:article -- --lang ja ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
-          AFTER_JA=$(ls src/content/articles/ 2>/dev/null | sort)
-          JA_NEW=$(comm -13 <(echo "$BEFORE_JA") <(echo "$AFTER_JA") | grep -v '\.en\.md$' | head -1 || true)
-          if [ -z "$JA_NEW" ]; then
+          AFTER_JA=$(find src/content/articles/ -maxdepth 1 -type f -name '*.md' ! -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
+          if [ "$BEFORE_JA" = "$AFTER_JA" ]; then
             echo "Error: Japanese article was not generated. Aborting."
             exit 1
           fi
-          JA_ARTICLE_FILE="src/content/articles/${JA_NEW}"
+          # Extract path from the diff's '>' lines (added or changed entries in AFTER).
+          # md5sum output format: "<hash>  <path>", so $3 is the file path.
+          JA_CHANGED=$(diff <(echo "$BEFORE_JA") <(echo "$AFTER_JA") | grep '^>' | head -1 | awk '{print $3}' || true)
+          if [ -z "$JA_CHANGED" ]; then
+            echo "Error: Could not identify generated Japanese article file."
+            exit 1
+          fi
+          JA_ARTICLE_FILE="${JA_CHANGED}"
           echo "ja_article_file=${JA_ARTICLE_FILE}" >> $GITHUB_OUTPUT
           echo "Generated ja: ${JA_ARTICLE_FILE}"
 
           # --- English article (optional — failure is a warning, not a job failure) ---
-          BEFORE_EN=$(ls src/content/articles/ 2>/dev/null | sort)
+          BEFORE_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
           if npm run generate:article -- --lang en ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; then
-            AFTER_EN=$(ls src/content/articles/ 2>/dev/null | sort)
-            EN_NEW=$(comm -13 <(echo "$BEFORE_EN") <(echo "$AFTER_EN") | grep '\.en\.md$' | head -1 || true)
-            if [ -n "$EN_NEW" ]; then
-              EN_ARTICLE_FILE="src/content/articles/${EN_NEW}"
-              echo "en_article_file=${EN_ARTICLE_FILE}" >> $GITHUB_OUTPUT
-              echo "Generated en: ${EN_ARTICLE_FILE}"
+            AFTER_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
+            if [ "$BEFORE_EN" != "$AFTER_EN" ]; then
+              EN_CHANGED=$(diff <(echo "$BEFORE_EN") <(echo "$AFTER_EN") | grep '^>' | head -1 | awk '{print $3}' || true)
+              if [ -n "$EN_CHANGED" ]; then
+                EN_ARTICLE_FILE="${EN_CHANGED}"
+                echo "en_article_file=${EN_ARTICLE_FILE}" >> $GITHUB_OUTPUT
+                echo "Generated en: ${EN_ARTICLE_FILE}"
+              else
+                echo "Warning: English article content changed but could not identify the file."
+                echo "en_article_file=" >> $GITHUB_OUTPUT
+              fi
             else
-              echo "Warning: English article generation succeeded but no new .en.md file found."
+              echo "Warning: English article generation succeeded but no changes detected."
               echo "en_article_file=" >> $GITHUB_OUTPUT
             fi
           else
