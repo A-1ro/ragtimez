@@ -82,10 +82,10 @@ export async function tavilySearch(
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        // Tavily は Authorization ヘッダーではなくボディで API キーを受け取る
+        // API キーは Authorization ヘッダーで渡す（ボディには含めない）
+        "Authorization": `Bearer ${apiKey}`,
       },
       body: JSON.stringify({
-        api_key: apiKey,
         query,
         search_depth: "basic",
         max_results: 5,
@@ -154,9 +154,12 @@ export async function tavilyExtract(
   try {
     res = await fetch("https://api.tavily.com/extract", {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        // API キーは Authorization ヘッダーで渡す（ボディには含めない）
+        "Authorization": `Bearer ${apiKey}`,
+      },
       body: JSON.stringify({
-        api_key: apiKey,
         urls: targetUrls,
       }),
     });
