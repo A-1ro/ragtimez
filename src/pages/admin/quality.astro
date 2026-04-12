@@ -15,8 +15,10 @@
  *   - Session user NOT in whitelist               → 401 JSON
  *   - Bearer header present but token wrong       → 401 JSON
  *
- * Redirect target is always the fixed path /api/auth/login to prevent
- * open-redirect attacks — no dynamic parameter is accepted.
+ * Unauthenticated visitors are redirected to /api/auth/login with a
+ * returnTo query parameter so they land back on this page after OAuth.
+ * The returnTo value is validated by validateReturnTo() in session.ts
+ * to prevent open-redirect attacks.
  *
  * Renders:
  *   - Summary stats (average score, count per grade)

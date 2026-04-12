@@ -4,6 +4,7 @@ import {
   consumeOAuthState,
   createSession,
   buildSessionCookie,
+  validateReturnTo,
 } from "../../../lib/session";
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -187,10 +188,11 @@ export const GET: APIRoute = async ({ request }) => {
   const isSecure = new URL(request.url).protocol === "https:";
 
   // Redirect to the original destination (if one was stored in the OAuth state
-  // payload) or fall back to the home page.  The returnTo path was validated
-  // by validateReturnTo() in login.ts before being embedded in the state, so
-  // it is safe to use directly here.
-  const redirectLocation = stateResult.returnTo ?? "/";
+  // payload) or fall back to the home page.  Defence-in-depth: even though
+  // returnTo was validated by validateReturnTo() in login.ts before being
+  // embedded in the state, we re-validate here so that a compromised or
+  // manually crafted KV entry cannot introduce an open-redirect.
+  const redirectLocation = validateReturnTo(stateResult.returnTo) ?? "/";
 
   return new Response(null, {
     status: 302,

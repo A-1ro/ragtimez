@@ -150,6 +150,8 @@ export interface ConsumeOAuthStateResult {
  *   - Must start with `/` (rejects absolute URLs such as `https://evil.com`).
  *   - Must NOT start with `//` (rejects protocol-relative URLs like `//evil.com`).
  *   - Must NOT contain a backslash (blocks browser-specific redirect tricks).
+ *   - Must NOT contain tab, CR, or LF characters (prevents header injection
+ *     and proxy normalisation tricks).
  *
  * Returns the validated path when all rules pass, or `undefined` otherwise.
  */
@@ -160,6 +162,7 @@ export function validateReturnTo(
   if (!path.startsWith("/")) return undefined;
   if (path.startsWith("//")) return undefined;
   if (path.includes("\\")) return undefined;
+  if (/[\t\r\n]/.test(path)) return undefined;
   return path;
 }
 
