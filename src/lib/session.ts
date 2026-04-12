@@ -131,21 +131,58 @@ export async function deleteSession(
 // OAuth CSRF state helpers
 // ---------------------------------------------------------------------------
 
+/** Shape of the value stored in KV for each OAuth state token. */
+interface OAuthStatePayload {
+  returnTo?: string;
+}
+
+/** Result returned by `consumeOAuthState`. */
+export interface ConsumeOAuthStateResult {
+  valid: boolean;
+  returnTo?: string;
+}
+
+/**
+ * Validate a `returnTo` path to prevent open-redirect attacks.
+ *
+ * Rules (all must pass):
+ *   - Must be a non-empty string.
+ *   - Must start with `/` (rejects absolute URLs such as `https://evil.com`).
+ *   - Must NOT start with `//` (rejects protocol-relative URLs like `//evil.com`).
+ *   - Must NOT contain a backslash (blocks browser-specific redirect tricks).
+ *
+ * Returns the validated path when all rules pass, or `undefined` otherwise.
+ */
+export function validateReturnTo(
+  path: string | null | undefined
+): string | undefined {
+  if (!path) return undefined;
+  if (!path.startsWith("/")) return undefined;
+  if (path.startsWith("//")) return undefined;
+  if (path.includes("\\")) return undefined;
+  return path;
+}
+
 /**
  * Store a one-time OAuth state token in KV with a short TTL.
+ * An optional `returnTo` path is embedded in the stored value so that the
+ * callback handler can redirect the user back to their original destination.
  */
 export async function saveOAuthState(
   kv: KVNamespace,
-  state: string
+  state: string,
+  returnTo?: string
 ): Promise<void> {
-  await kv.put(`oauth_state:${state}`, "1", {
+  const payload: OAuthStatePayload = returnTo ? { returnTo } : {};
+  await kv.put(`oauth_state:${state}`, JSON.stringify(payload), {
     expirationTtl: OAUTH_STATE_TTL,
   });
 }
 
 /**
  * Verify that an OAuth state token exists and delete it (one-time use).
- * Returns `true` when the state is valid, `false` otherwise.
+ * Returns `{ valid: true, returnTo? }` when the state is valid, or
+ * `{ valid: false }` when the token is absent or expired.
  *
  * NOTE: KV `get` + `delete` is not atomic.  Two concurrent requests carrying
  * the same `state` value could both succeed within the narrow window between
@@ -155,9 +192,22 @@ export async function saveOAuthState(
 export async function consumeOAuthState(
   kv: KVNamespace,
   state: string
-): Promise<boolean> {
-  const value = await kv.get(`oauth_state:${state}`);
-  if (!value) return false;
+): Promise<ConsumeOAuthStateResult> {
+  const raw = await kv.get(`oauth_state:${state}`);
+  if (!raw) return { valid: false };
   await kv.delete(`oauth_state:${state}`);
-  return true;
+
+  // Parse the stored JSON payload.  Fall back gracefully if the stored value
+  // is the legacy plain-string "1" (written before this change).
+  let payload: OAuthStatePayload = {};
+  try {
+    payload = JSON.parse(raw) as OAuthStatePayload;
+  } catch {
+    // Legacy value — treat as valid state with no returnTo.
+  }
+
+  return {
+    valid: true,
+    ...(payload.returnTo ? { returnTo: payload.returnTo } : {}),
+  };
 }

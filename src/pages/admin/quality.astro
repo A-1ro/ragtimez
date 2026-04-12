@@ -51,17 +51,26 @@ const authorized = bearerAuthorized || sessionAuthorized;
 
 if (!authorized) {
   // Unauthenticated browser visit (no session cookie, no Bearer header):
-  // redirect to GitHub OAuth login so the user can authenticate.
+  // redirect to GitHub OAuth login with a returnTo param so the user lands
+  // back on this page after authenticating.
   const hasBearerAttempt = providedToken.length > 0;
   const hasSession = sessionUser !== undefined;
   if (!hasBearerAttempt && !hasSession) {
-    return Astro.redirect("/api/auth/login", 302);
+    return Astro.redirect("/api/auth/login?returnTo=/admin/quality", 302);
   }
 
   // Either the Bearer token was wrong, or the user is logged in but not in
   // the admin whitelist — return 401 with a JSON body in both cases.
+  //
+  // When ADMIN_GITHUB_IDS is not configured at all, surface a more actionable
+  // error message so operators know what to set up.
+  const adminIdsConfigured = (env.ADMIN_GITHUB_IDS ?? "").trim().length > 0;
+  const errorMessage = !adminIdsConfigured
+    ? "Admin access not configured"
+    : "Unauthorized";
+
   return new Response(
-    JSON.stringify({ error: "Unauthorized" }),
+    JSON.stringify({ error: errorMessage }),
     {
       status: 401,
       headers: {

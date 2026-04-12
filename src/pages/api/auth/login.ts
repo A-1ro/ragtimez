@@ -1,6 +1,6 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
-import { saveOAuthState } from "../../../lib/session";
+import { saveOAuthState, validateReturnTo } from "../../../lib/session";
 
 const GITHUB_AUTHORIZE_URL = "https://github.com/login/oauth/authorize";
 
@@ -30,9 +30,15 @@ export const GET: APIRoute = async ({ request }) => {
     );
   }
 
-  // Generate and persist a one-time CSRF state token.
+  // Validate the optional returnTo query parameter before embedding it in the
+  // OAuth state payload.  validateReturnTo rejects external URLs, protocol-
+  // relative URLs, and backslash-containing paths.
+  const rawReturnTo = new URL(request.url).searchParams.get("returnTo");
+  const returnTo = validateReturnTo(rawReturnTo);
+
+  // Generate and persist a one-time CSRF state token, embedding returnTo.
   const state = crypto.randomUUID();
-  await saveOAuthState(env.AUTH_KV, state);
+  await saveOAuthState(env.AUTH_KV, state, returnTo);
 
   // Build the GitHub authorization URL.
   const redirectUri = new URL("/api/auth/callback", request.url).href;
