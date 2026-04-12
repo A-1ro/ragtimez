@@ -772,11 +772,11 @@ const isAdmin = Astro.locals.isAdmin ?? false;
               </a>
               {isAdmin && (
                 <a href="/admin/quality" class="admin-link" aria-label="管理ダッシュボードを開く">
-                  管理
+                  {lang === "en" ? "Admin" : "管理"}
                 </a>
               )}
               <form method="POST" action="/api/auth/logout" class="logout-form">
-                <button type="submit" class="logout-btn">ログアウト</button>
+                <button type="submit" class="logout-btn">{lang === "en" ? "Logout" : "ログアウト"}</button>
               </form>
             </div>
           ) : (
@@ -804,18 +804,21 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     </header>
 
     {/* Drawer overlay (backdrop) */}
-    <div id="drawer-overlay" class="drawer-overlay" aria-hidden="true"></div>
+    {/* inert keeps the overlay unfocusable/invisible to AT when drawer is closed */}
+    <div id="drawer-overlay" class="drawer-overlay" aria-hidden="true" inert></div>
 
     {/* Drawer panel — slides in from the right on mobile */}
+    {/* inert blocks all Tab focus and AT access while the drawer is closed */}
     <div
       id="drawer-panel"
       class="drawer-panel"
       role="dialog"
       aria-modal="true"
       aria-label={lang === "en" ? "Navigation menu" : "ナビゲーションメニュー"}
+      inert
     >
       <div class="drawer-header">
-        <a href={lang === "ja" ? "/" : "/en"} class="brand-link" tabindex="-1">
+        <a href={lang === "ja" ? "/" : "/en"} class="brand-link">
           <img src="/logo.png" alt="RAGtimeZ" class="drawer-brand" />
         </a>
         <button
@@ -905,7 +908,7 @@ const isAdmin = Astro.locals.isAdmin ?? false;
     </footer>
 
     <script>
-      // Hamburger drawer: open/close logic
+      // Hamburger drawer: open/close logic with focus trap and inert management
       (function () {
         const hamburgerBtn = document.getElementById('hamburger-btn');
         const drawerOverlay = document.getElementById('drawer-overlay');
@@ -914,11 +917,58 @@ const isAdmin = Astro.locals.isAdmin ?? false;
 
         if (!hamburgerBtn || !drawerOverlay || !drawerPanel || !drawerCloseBtn) return;
 
+        // Selector for all naturally focusable elements
+        const FOCUSABLE_SELECTOR =
+          'a[href], button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])';
+
+        // Holds the keydown handler so it can be removed on close
+        let focusTrapHandler: ((e: KeyboardEvent) => void) | null = null;
+
+        function getFocusableElements(): HTMLElement[] {
+          return Array.from(drawerPanel!.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+        }
+
+        function trapFocus(e: KeyboardEvent): void {
+          if (e.key !== 'Tab') return;
+
+          const focusable = getFocusableElements();
+          if (focusable.length === 0) {
+            e.preventDefault();
+            return;
+          }
+
+          const first = focusable[0];
+          const last = focusable[focusable.length - 1];
+
+          if (e.shiftKey) {
+            // Shift+Tab: if focus is on first element, wrap to last
+            if (document.activeElement === first) {
+              e.preventDefault();
+              last.focus();
+            }
+          } else {
+            // Tab: if focus is on last element, wrap to first
+            if (document.activeElement === last) {
+              e.preventDefault();
+              first.focus();
+            }
+          }
+        }
+
         function openDrawer(): void {
+          // Remove inert so the panel and overlay are interactive
+          drawerOverlay!.removeAttribute('inert');
+          drawerPanel!.removeAttribute('inert');
+
           drawerOverlay!.classList.add('is-open');
           drawerPanel!.classList.add('is-open');
           hamburgerBtn!.setAttribute('aria-expanded', 'true');
           drawerPanel!.removeAttribute('aria-hidden');
+
+          // Install focus trap
+          focusTrapHandler = trapFocus;
+          document.addEventListener('keydown', focusTrapHandler);
+
           // Move focus to close button for accessibility
           drawerCloseBtn!.focus();
         }
@@ -928,10 +978,21 @@ const isAdmin = Astro.locals.isAdmin ?? false;
           drawerPanel!.classList.remove('is-open');
           hamburgerBtn!.setAttribute('aria-expanded', 'false');
           drawerPanel!.setAttribute('aria-hidden', 'true');
+
+          // Restore inert so Tab cannot reach hidden drawer or overlay
+          drawerPanel!.setAttribute('inert', '');
+          drawerOverlay!.setAttribute('inert', '');
+
+          // Remove focus trap listener
+          if (focusTrapHandler) {
+            document.removeEventListener('keydown', focusTrapHandler);
+            focusTrapHandler = null;
+          }
+
           hamburgerBtn!.focus();
         }
 
-        // Initialize with drawer hidden
+        // Initialize with drawer hidden (inert already set via HTML attribute)
         drawerPanel.setAttribute('aria-hidden', 'true');
 
         hamburgerBtn.addEventListener('click', openDrawer);
