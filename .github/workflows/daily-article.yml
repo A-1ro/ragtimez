@@ -81,7 +81,7 @@ jobs:
             exit 1
           fi
           # Extract path from the diff's '>' lines (added or changed entries in AFTER).
-          # md5sum output format: "<hash>  <path>", so $3 is the file path.
+          # diff's '>' prefix shifts fields: "> <hash>  <path>" → $1=">", $2=hash, $3=path
           JA_CHANGED=$(diff <(echo "$BEFORE_JA") <(echo "$AFTER_JA") | grep '^>' | head -1 | awk '{print $3}' || true)
           if [ -z "$JA_CHANGED" ]; then
             echo "Error: Could not identify generated Japanese article file."
