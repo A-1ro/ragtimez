@@ -70,6 +70,10 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
     // ORDER BY clause: "helpful" sorts by vote count desc then newest first;
     // any other value (including "new") sorts by creation date desc.
+    // Note: `helpful_count` here is a column alias defined in the SELECT via the
+    // LEFT JOIN subquery on note_votes. SQLite (and D1) allow ORDER BY to reference
+    // SELECT-level aliases, so this is valid even though `helpful_count` is not a
+    // base-table column.
     const orderByClause =
       sort === "helpful"
         ? "ORDER BY helpful_count DESC, n.created_at DESC"
@@ -103,9 +107,11 @@ export const GET: APIRoute = async ({ request, locals }) => {
 
       const rawNotes = (result.results ?? []) as Array<Record<string, unknown>>;
       // SQLite returns integers; coerce the boolean column to an actual boolean.
+      // The defensive `=== true` guard handles any future D1 behaviour change
+      // that might return a native boolean instead of 0/1.
       const notes: Note[] = rawNotes.map((row) => ({
         ...(row as unknown as Note),
-        viewer_has_voted: row.viewer_has_voted === 1,
+        viewer_has_voted: row.viewer_has_voted === 1 || row.viewer_has_voted === true,
       }));
 
       return new Response(

@@ -1211,6 +1211,9 @@ if (user && env.DB) {
       const data = (await response.json()) as { notes: Note[] };
       const notes = data.notes || [];
 
+      // Preserve scroll position so the viewport doesn't jump when re-rendering
+      // after a sort change.
+      const scrollTop = notesList.scrollTop;
       notesList.innerHTML = "";
 
       if (notes.length === 0) {
@@ -1224,6 +1227,7 @@ if (user && env.DB) {
           notesList.appendChild(renderNote(note));
         });
       }
+      notesList.scrollTop = scrollTop;
     } catch (error) {
       console.error("Error loading notes:", error);
       notesList.innerHTML = '<div class="empty-state">注釈の読み込みに失敗しました。</div>';
@@ -1237,6 +1241,9 @@ if (user && env.DB) {
       alert("ログインが必要です。GitHubでログインしてください。");
       return;
     }
+
+    // Prevent double-clicks while the request is in flight.
+    btn.disabled = true;
 
     const isVoted = btn.classList.contains("voted");
     const method = isVoted ? "DELETE" : "POST";
@@ -1280,6 +1287,8 @@ if (user && env.DB) {
     } catch (error) {
       console.error("Error toggling helpful vote:", error);
       alert("投票の処理に失敗しました。");
+    } finally {
+      btn.disabled = false;
     }
   }
 
