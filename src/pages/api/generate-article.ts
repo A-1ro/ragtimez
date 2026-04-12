@@ -2,6 +2,12 @@ import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 import { env } from "cloudflare:workers";
 import { timingSafeEqual } from "../../lib/auth";
+import {
+  tavilySearch,
+  tavilyExtract,
+  type TavilySearchResult,
+  type TavilyExtractResult,
+} from "../../lib/tavily";
 
 // ---------------------------------------------------------------------------
 // Constants
@@ -24,6 +30,24 @@ const RSS_LOOKBACK_DAYS = 7;
  * Number of days of past articles to consider when avoiding topic duplication.
  */
 const PAST_ARTICLES_LOOKBACK_DAYS = 14;
+
+/**
+ * Tavily extract の対象とする URL の上限数。
+ * 無料枠の節約のため、スコアの高い上位 N 件に絞る。
+ */
+const TAVILY_EXTRACT_MAX_URLS = 8;
+
+/**
+ * LLM コンテキストに組み込む際の、1 ソースあたりの本文最大文字数。
+ * 約 500〜700 トークン相当。
+ */
+const TAVILY_CONTENT_MAX_CHARS = 2000;
+
+/**
+ * Tavily 本文を含むコンテキスト全体の最大文字数。
+ * Llama 3.3 70B の 128k-token コンテキストウィンドウの安全マージンを考慮した上限。
+ */
+const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 40_000;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -185,14 +209,110 @@ function extractSources(entries: RssEntry[]): ArticleSource[] {
 /**
  * Convert RSS entries into a condensed context block for the LLM.
  * Each entry includes the source link, title, and summary.
+ * fullTextMap が渡された場合、サマリーの代わりに本文（トリミング済み）を使用する。
  */
-function buildContext(entries: RssEntry[]): string {
+function buildContext(
+  entries: RssEntry[],
+  fullTextMap?: Map<string, string>,
+): string {
   return entries
-    .map(
-      (e, i) =>
-        `[${i + 1}] Source: ${e.link}\nTitle: ${e.title}\n${e.summary ? e.summary.trim() : "(no summary)"}`,
-    )
+    .map((e, i) => {
+      const fullText = fullTextMap?.get(e.link);
+      const body = fullText
+        ? fullText.slice(0, TAVILY_CONTENT_MAX_CHARS)
+        : (e.summary ? e.summary.trim() : "(no summary)");
+      const bodyLabel = fullText ? "Full content (truncated)" : "Summary";
+      return `[${i + 1}] Source: ${e.link}\nTitle: ${e.title}\n${bodyLabel}: ${body}`;
+    })
     .join("\n\n---\n\n");
+}
+
+/**
+ * RSS エントリから Tavily 検索クエリを動的に生成する。
+ *
+ * 上位エントリのタイトルからキーワードを抽出し、2〜3 件の具体的なクエリを作る。
+ * クエリが多すぎると Tavily の無料枠を消費するため上限 3 件に制限する。
+ */
+function buildTavilyQueries(entries: RssEntry[]): string[] {
+  // ユニークなソースラベルを収集（例: "Azure", "OpenAI" etc.）
+  const sourceLabels = [...new Set(entries.map((e) => e.source_label))].slice(0, 3);
+
+  // ソースラベルごとに "latest AI news" スタイルのクエリを生成
+  const queries = sourceLabels.map((label) => `${label} AI latest updates 2026`);
+
+  // エントリが 1 種類のソースのみの場合は汎用クエリを追加
+  if (queries.length < 2) {
+    queries.push("LLM RAG agent latest news 2026");
+  }
+
+  return queries.slice(0, 3);
+}
+
+/**
+ * Tavily SearchResult と RSS エントリをマージし、URL で重複排除する。
+ * RSS 発見 URL を優先し、Tavily 追加 URL は末尾に追加する。
+ *
+ * @param rssEntries    既存の RSS エントリ
+ * @param tavilyResults Tavily /search の結果
+ * @returns             RSS エントリに Tavily 結果を追加した RssEntry 配列
+ */
+function mergeWithTavilyResults(
+  rssEntries: RssEntry[],
+  tavilyResults: TavilySearchResult[],
+): RssEntry[] {
+  const seenUrls = new Set(rssEntries.map((e) => e.link));
+  const merged = [...rssEntries];
+
+  for (const result of tavilyResults) {
+    if (seenUrls.has(result.url)) continue;
+    seenUrls.add(result.url);
+    // Tavily 結果を RssEntry 形式に変換（source_label は "Tavily" とする）
+    merged.push({
+      source_label: "Tavily",
+      source_url: result.url,
+      title: result.title,
+      link: result.url,
+      summary: result.content,
+      published_at: new Date().toISOString(),
+    });
+  }
+
+  return merged;
+}
+
+/**
+ * Tavily /extract の結果から URL→本文 のマップを構築する。
+ * コンテキスト全体が TAVILY_CONTEXT_MAX_TOTAL_CHARS を超えないよう管理する。
+ *
+ * @param extractResults  Tavily /extract の結果
+ * @param priorityUrls    公式ソースの URL（優先的に本文を割り当てる）
+ * @returns               URL→トリミング済み本文 のマップ
+ */
+function buildFullTextMap(
+  extractResults: TavilyExtractResult[],
+  priorityUrls: Set<string>,
+): Map<string, string> {
+  const map = new Map<string, string>();
+  let totalChars = 0;
+
+  // 公式ソースを先に処理
+  const sortedResults = [...extractResults].sort((a, b) => {
+    const aIsOfficial = priorityUrls.has(a.url) ? 0 : 1;
+    const bIsOfficial = priorityUrls.has(b.url) ? 0 : 1;
+    return aIsOfficial - bIsOfficial;
+  });
+
+  for (const result of sortedResults) {
+    if (totalChars >= TAVILY_CONTEXT_MAX_TOTAL_CHARS) break;
+    if (!result.raw_content) continue;
+
+    const remaining = TAVILY_CONTEXT_MAX_TOTAL_CHARS - totalChars;
+    const trimmed = result.raw_content.slice(0, Math.min(TAVILY_CONTENT_MAX_CHARS, remaining));
+    map.set(result.url, trimmed);
+    totalChars += trimmed.length;
+  }
+
+  return map;
 }
 
 /**
@@ -227,12 +347,19 @@ interface TopicSelection {
  *   0. Topic selection — choose the most technically interesting & actionable topic
  *   1. Metadata (title, summary, tags) — small JSON, reliable
  *   2. Body — plain Markdown, deep-dive focused
+ *
+ * @param entries      コンテキストとして渡す RSS エントリ（Tavily 結果のマージ済み）
+ * @param date         記事の日付（YYYY-MM-DD）
+ * @param pastArticles 重複回避のための過去記事リスト
+ * @param lang         生成言語（"ja" | "en"）
+ * @param fullTextMap  Tavily /extract で取得した URL→本文マップ（オプション）
  */
 async function generateWithLLM(
   entries: RssEntry[],
   date: string,
   pastArticles: { title: string; tags: string[]; date: string }[],
   lang: "ja" | "en" = "ja",
+  fullTextMap?: Map<string, string>,
 ): Promise<{
   title: string;
   summary: string;
@@ -241,7 +368,11 @@ async function generateWithLLM(
   selectedTopic: string;
   selectedEntries: RssEntry[];
 }> {
+  // fullTextMap が存在する場合は本文付きのコンテキストを使用
+  const hasFullText = fullTextMap !== undefined && fullTextMap.size > 0;
+
   // --- Step 0: Topic selection ---
+  // トピック選定時点ではサマリーのみを使用（本文はトークン節約のため Step 2 で使用）
   const contextForSelection = buildContext(entries);
 
   // Build "already covered" block from past articles so the LLM avoids duplicates.
@@ -272,6 +403,9 @@ async function generateWithLLM(
             "2. Is most actionable/useful for working engineers\n" +
             "3. Has enough information for a 1000-word deep dive\n" +
             "4. Does NOT overlap with topics already covered in recent articles (see list below)\n\n" +
+            (hasFullText
+              ? "Note: Full article body text has been retrieved for many of these entries. Prefer topics where the content field is detailed and substantive.\n\n"
+              : "") +
             "If every high-depth topic has been covered, pick the news item that adds the most NEW technical information not in the past articles, and explain what's new in the reason.\n\n" +
             "Output ONLY valid JSON with exactly these keys:\n" +
             '- "topic": English description of the chosen topic (1 sentence)\n' +
@@ -313,8 +447,9 @@ async function generateWithLLM(
       ? validIndices.map((idx) => entries[idx - 1])
       : entries; // fallback to all if no valid indices
 
-  // Rebuild context with only selected entries
-  const context = buildContext(selectedEntries);
+  // 選定エントリのみを使って本文付きコンテキストを構築
+  // fullTextMap が渡された場合は本文を使用し、LLM に詳細な情報を提供する
+  const context = buildContext(selectedEntries, fullTextMap);
   const contextBlock = `Today is ${date}.\n\n${context}`;
 
   // --- Step 1: metadata (title, summary, tags) ---
@@ -381,6 +516,13 @@ async function generateWithLLM(
   }
 
   // --- Step 2: body (plain Markdown, deep-dive focused) ---
+  // hasFullText が true の場合、ソース本文を活用してより具体的な記述を指示する
+  const fullTextInstruction = hasFullText
+    ? "- The context includes full article body text. Use specific details, code examples, " +
+      "version numbers, API signatures, and benchmarks from the source text.\n"
+    : "- The context contains only article summaries. Be explicit when you lack technical " +
+      "detail, and avoid fabricating specifics.\n";
+
   const bodySystemPrompt = lang === "en"
     ? "You are a senior software engineer writing a technical deep-dive blog post.\n" +
       "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
@@ -394,7 +536,7 @@ async function generateWithLLM(
       "Rules:\n" +
       "- Each section must be substantive (4-8 sentences), not just a one-liner.\n" +
       "- Mention specific version numbers, API names, model names, and benchmarks when available.\n" +
-      "- If you don't have enough technical detail on a point, say so rather than filling with fluff.\n" +
+      fullTextInstruction +
       "- Do NOT turn this into a news roundup covering multiple companies or topics.\n" +
       "Output only the Markdown, nothing else."
     : "You are a Japanese senior software engineer writing a technical deep-dive blog post.\n" +
@@ -409,7 +551,7 @@ async function generateWithLLM(
       "Rules:\n" +
       "- Each section must be substantive (4-8 sentences), not just a one-liner.\n" +
       "- Mention specific version numbers, API names, model names, and benchmarks when available.\n" +
-      "- If you don't have enough technical detail on a point, say so rather than filling with fluff.\n" +
+      fullTextInstruction +
       "- Do NOT turn this into a news roundup covering multiple companies or topics.\n" +
       "Output only the Markdown, nothing else.";
 
@@ -614,7 +756,61 @@ export const POST: APIRoute = async ({ request }) => {
 
   // Cap to MAX_CONTEXT_ENTRIES so that sources and LLM context are always
   // in sync: the LLM only reads the entries it can reference.
-  const contextEntries = allEntries.slice(0, MAX_CONTEXT_ENTRIES);
+  let contextEntries = allEntries.slice(0, MAX_CONTEXT_ENTRIES);
+
+  // --- Tavily RAG（オプション）----------------------------------------------
+  // TAVILY_API_KEY が設定されている場合のみ実行。
+  // 失敗時は RSS サマリーのみで続行するため、エラーは警告としてログに残す。
+  let fullTextMap: Map<string, string> | undefined;
+
+  if (env.TAVILY_API_KEY) {
+    try {
+      // Step A: RSS エントリから検索クエリを生成し、Tavily /search を実行
+      const tavilyQueries = buildTavilyQueries(contextEntries);
+      console.log(`Tavily search: ${tavilyQueries.length} queries`);
+
+      const tavilyResults = await tavilySearch(env.TAVILY_API_KEY, tavilyQueries);
+      console.log(`Tavily search returned ${tavilyResults.length} results`);
+
+      // Step B: Tavily 結果を RSS エントリにマージし、URL で重複排除
+      const mergedEntries = mergeWithTavilyResults(contextEntries, tavilyResults);
+      // マージ後も MAX_CONTEXT_ENTRIES 上限を維持
+      contextEntries = mergedEntries.slice(0, MAX_CONTEXT_ENTRIES);
+
+      // Step C: マージ済みエントリの URL に対して Tavily /extract で本文取得
+      // 公式ソースを優先して extract 対象を選択
+      const allUrls = contextEntries.map((e) => e.link);
+      const officialUrls = allUrls.filter(
+        (url) => classifySourceType(url) === "official",
+      );
+      const nonOfficialUrls = allUrls.filter(
+        (url) => classifySourceType(url) !== "official",
+      );
+      // 公式ソースを先頭に並べ、上限 TAVILY_EXTRACT_MAX_URLS 件を extract
+      const extractUrls = [
+        ...officialUrls,
+        ...nonOfficialUrls,
+      ].slice(0, TAVILY_EXTRACT_MAX_URLS);
+
+      console.log(`Tavily extract: ${extractUrls.length} URLs`);
+      const extractResults = await tavilyExtract(env.TAVILY_API_KEY, extractUrls);
+      console.log(`Tavily extract returned ${extractResults.length} results`);
+
+      if (extractResults.length > 0) {
+        // 公式ソース URL のセット（本文割り当て優先度計算に使用）
+        const officialUrlSet = new Set(officialUrls);
+        fullTextMap = buildFullTextMap(extractResults, officialUrlSet);
+        console.log(`Full text map: ${fullTextMap.size} entries`);
+      }
+    } catch (err) {
+      // Tavily 失敗時は RSS サマリーのみで続行
+      console.warn(
+        `Tavily RAG pipeline failed, falling back to RSS summaries only: ${
+          err instanceof Error ? err.message : String(err)
+        }`,
+      );
+    }
+  }
 
   // --- LLM generation -------------------------------------------------------
   let llmResult: {
@@ -627,7 +823,7 @@ export const POST: APIRoute = async ({ request }) => {
   };
   try {
     const pastArticles = await loadRecentPastArticles(dateInput);
-    llmResult = await generateWithLLM(contextEntries, dateInput, pastArticles, lang);
+    llmResult = await generateWithLLM(contextEntries, dateInput, pastArticles, lang, fullTextMap);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(

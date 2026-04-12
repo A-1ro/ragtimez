@@ -91,6 +91,15 @@ declare namespace Cloudflare {
      * Set via: wrangler pages secret put BLUESKY_APP_PASSWORD
      */
     BLUESKY_APP_PASSWORD?: string;
+    /**
+     * Tavily API key for web search and content extraction.
+     * Used by /api/generate-article to fetch full article body text for RAG context.
+     * Optional — when unset, article generation falls back to RSS summaries only.
+     *
+     * Get your API key from https://app.tavily.com
+     * Set via: wrangler pages secret put TAVILY_API_KEY
+     */
+    TAVILY_API_KEY?: string;
   }
 }
 
