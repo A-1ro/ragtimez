@@ -52,6 +52,7 @@ User Browser
 | `ADMIN_GITHUB_IDS` | `string` (optional) | Comma-separated list of GitHub numeric IDs allowed to access `/admin/quality` via browser session; unset disables session-based access |
 | `BLUESKY_IDENTIFIER` | `string` (optional) | Bluesky handle (e.g., `ragtimez.bsky.social`); unset skips Bluesky posting |
 | `BLUESKY_APP_PASSWORD` | `string` (optional) | Bluesky App Password (from https://bsky.app/settings/app-passwords); unset skips Bluesky posting |
+| `TAVILY_API_KEY` | `string` (optional) | Tavily API key for web search + full-text extraction; unset falls back to RSS summaries only |
 
 In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only works in production or via `wrangler pages dev` with remote bindings.
 
