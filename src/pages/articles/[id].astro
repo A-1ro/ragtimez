@@ -5,6 +5,7 @@ import { trustLabelMap } from "../../constants/trustLevels";
 import { formatDate } from "../../utils/date";
 import { computeArticleQualityFromData } from "../../lib/quality";
 import { getCounterpartArticleId } from "../../lib/i18n";
+import { isBookmarked } from "../../lib/bookmarks";
 import { env } from "cloudflare:workers";
 
 // Dynamic route: disable prerendering so the page is rendered on each request
@@ -77,6 +78,17 @@ const counterpart = allArticles.find(
 const alternateLangHref: string | null = counterpart
   ? `/en/articles/${counterpart.id}`
   : null;
+
+// Check whether the current user has already bookmarked this article.
+// Gracefully falls back to false when D1 is unavailable (local dev).
+let bookmarked = false;
+if (user && env.DB) {
+  try {
+    bookmarked = await isBookmarked(env.DB, user.githubId, article.id);
+  } catch {
+    // Non-fatal: DB unavailable in local dev
+  }
+}
 ---
 
 <BaseLayout
@@ -142,6 +154,36 @@ const alternateLangHref: string | null = counterpart
           ))}
         </ul>
       )}
+
+      {/* Bookmark button — optimistic UI: toggled instantly via JS, synced to API */}
+      <div class="bookmark-container">
+        {user ? (
+          <button
+            id="bookmark-btn"
+            class={`bookmark-btn${bookmarked ? " bookmarked" : ""}`}
+            data-article-slug={article.id}
+            data-bookmarked={bookmarked ? "true" : "false"}
+            aria-label={bookmarked ? "ブックマーク解除" : "ブックマーク"}
+            aria-pressed={bookmarked ? "true" : "false"}
+          >
+            <svg class="bookmark-icon" width="16" height="16" viewBox="0 0 24 24" fill={bookmarked ? "currentColor" : "none"} stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span class="bookmark-label">{bookmarked ? "ブックマーク済み" : "ブックマーク"}</span>
+          </button>
+        ) : (
+          <a
+            href={`/api/auth/login?redirect=${encodeURIComponent(`/articles/${article.id}`)}`}
+            class="bookmark-btn bookmark-login"
+            aria-label="ログインしてブックマーク"
+          >
+            <svg class="bookmark-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+              <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+            </svg>
+            <span class="bookmark-label">ログインしてブックマーク</span>
+          </a>
+        )}
+      </div>
     </header>
 
     <div class="article-body prose">
@@ -820,6 +862,51 @@ const alternateLangHref: string | null = counterpart
     margin-bottom: 1rem;
   }
 
+  /* Bookmark button */
+  .bookmark-container {
+    margin-top: 1.25rem;
+  }
+
+  .bookmark-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    font-size: 0.875rem;
+    font-weight: 500;
+    color: var(--color-muted);
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    padding: 0.4em 1em;
+    cursor: pointer;
+    text-decoration: none;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+    line-height: 1.4;
+  }
+
+  .bookmark-btn:hover {
+    color: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    background: rgba(61, 142, 245, 0.06);
+    text-decoration: none;
+  }
+
+  .bookmark-btn.bookmarked {
+    color: var(--color-accent-soft);
+    border-color: rgba(147, 197, 253, 0.4);
+    background: rgba(61, 142, 245, 0.1);
+  }
+
+  .bookmark-btn.bookmarked:hover {
+    color: #ef4444;
+    border-color: rgba(239, 68, 68, 0.4);
+    background: rgba(239, 68, 68, 0.06);
+  }
+
+  .bookmark-icon {
+    flex-shrink: 0;
+  }
+
   @media (max-width: 600px) {
     .article {
       padding: 1rem 0 2rem;
@@ -1256,4 +1343,70 @@ const alternateLangHref: string | null = counterpart
 
   // Load notes on page load
   loadNotes();
+
+  // ---------------------------------------------------------------------------
+  // Bookmark — optimistic UI: toggle state immediately, then sync with API.
+  // ---------------------------------------------------------------------------
+  const bookmarkBtn = document.getElementById("bookmark-btn") as HTMLButtonElement | null;
+
+  if (bookmarkBtn) {
+    bookmarkBtn.addEventListener("click", async () => {
+      const slug = bookmarkBtn.getAttribute("data-article-slug") ?? "";
+      const isCurrentlyBookmarked = bookmarkBtn.getAttribute("data-bookmarked") === "true";
+
+      // Optimistic update
+      const nextState = !isCurrentlyBookmarked;
+      applyBookmarkState(bookmarkBtn, nextState);
+
+      try {
+        let response: Response;
+        if (nextState) {
+          // Add bookmark
+          response = await fetch("/api/bookmarks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ slug }),
+          });
+        } else {
+          // Remove bookmark
+          response = await fetch(`/api/bookmarks/${encodeURIComponent(slug)}`, {
+            method: "DELETE",
+          });
+        }
+
+        if (!response.ok && response.status !== 204) {
+          // Revert on error
+          applyBookmarkState(bookmarkBtn, isCurrentlyBookmarked);
+          console.error("[bookmark] API error", response.status);
+        }
+      } catch (err) {
+        // Revert on network failure
+        applyBookmarkState(bookmarkBtn, isCurrentlyBookmarked);
+        console.error("[bookmark] network error", err);
+      }
+    });
+  }
+
+  function applyBookmarkState(btn: HTMLButtonElement, bookmarked: boolean): void {
+    btn.setAttribute("data-bookmarked", bookmarked ? "true" : "false");
+    btn.setAttribute("aria-pressed", bookmarked ? "true" : "false");
+    btn.setAttribute("aria-label", bookmarked ? "ブックマーク解除" : "ブックマーク");
+
+    if (bookmarked) {
+      btn.classList.add("bookmarked");
+    } else {
+      btn.classList.remove("bookmarked");
+    }
+
+    const label = btn.querySelector(".bookmark-label");
+    if (label) {
+      label.textContent = bookmarked ? "ブックマーク済み" : "ブックマーク";
+    }
+
+    // Toggle SVG fill
+    const svg = btn.querySelector(".bookmark-icon");
+    if (svg) {
+      svg.setAttribute("fill", bookmarked ? "currentColor" : "none");
+    }
+  }
 </script>

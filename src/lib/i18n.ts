@@ -31,6 +31,19 @@ export const translations: Record<Lang, Record<string, string>> = {
     noteErrNotFound: "ノートが見つかりません",
     noteErrIdRequired: "ノートIDが必要です",
     noteErrInternal: "内部サーバーエラーが発生しました",
+    // Bookmark API error messages
+    bookmarkErrUnauthorized: "認証が必要です",
+    bookmarkErrDbUnavailable: "この環境ではDBバインディングを利用できません",
+    bookmarkErrInvalidJson: "リクエストボディのJSONが不正です",
+    bookmarkErrSlugRequired: "slug は必須です",
+    bookmarkErrSlugTooLong: "slug は200文字以内で入力してください",
+    bookmarkErrInternal: "内部サーバーエラーが発生しました",
+    // Bookmark UI strings
+    bookmarkAdd: "ブックマーク",
+    bookmarkRemove: "ブックマーク解除",
+    bookmarkLoginPrompt: "ログインしてブックマーク",
+    bookmarksPageTitle: "ブックマーク",
+    bookmarksEmpty: "ブックマークした記事はまだありません。",
   },
   en: {
     siteTagline: "AI-powered daily tech blog",
@@ -59,6 +72,19 @@ export const translations: Record<Lang, Record<string, string>> = {
     noteErrNotFound: "Note not found",
     noteErrIdRequired: "Note ID is required",
     noteErrInternal: "Internal server error",
+    // Bookmark API error messages
+    bookmarkErrUnauthorized: "Unauthorized: authentication required",
+    bookmarkErrDbUnavailable: "DB binding is not available in this environment",
+    bookmarkErrInvalidJson: "Invalid JSON in request body",
+    bookmarkErrSlugRequired: "slug is required",
+    bookmarkErrSlugTooLong: "slug must not exceed 200 characters",
+    bookmarkErrInternal: "Internal server error",
+    // Bookmark UI strings
+    bookmarkAdd: "Bookmark",
+    bookmarkRemove: "Remove bookmark",
+    bookmarkLoginPrompt: "Login to bookmark",
+    bookmarksPageTitle: "Bookmarks",
+    bookmarksEmpty: "You have no bookmarked articles yet.",
   },
 };
 
