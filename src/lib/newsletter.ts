@@ -12,6 +12,7 @@ import { timingSafeEqual } from "./auth";
 
 /**
  * Escape HTML special characters to prevent XSS attacks.
+ * Used for text content nodes (title, summary, etc.).
  */
 function escapeHtml(str: string): string {
   return str
@@ -20,6 +21,20 @@ function escapeHtml(str: string): string {
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;")
     .replace(/'/g, "&#39;");
+}
+
+/**
+ * Escape characters that are unsafe inside an HTML attribute value for URLs.
+ * Intentionally does NOT escape `&` so that query-parameter separators
+ * (e.g. `?foo=1&bar=2`) remain valid after injection into an href attribute.
+ * URLs are already percent-encoded by the caller (via `new URL()` /
+ * `encodeURIComponent`), so `&` here is always a legitimate query separator.
+ */
+function escapeUrlForHtmlAttr(url: string): string {
+  return url
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 /**
@@ -285,8 +300,9 @@ export async function sendEmailViaResend(
 export function generateConfirmationEmailHtml(
   unsubscribeUrl: string
 ): string {
-  // Escape URL to prevent XSS — mirrors the same pattern used in generateArticleEmailHtml.
-  const escapedUnsubscribeUrl = escapeHtml(unsubscribeUrl);
+  // Use URL-specific escaping: `&` must be preserved as a query-parameter
+  // separator; only `"`, `<`, and `>` need escaping inside an href attribute.
+  const escapedUnsubscribeUrl = escapeUrlForHtmlAttr(unsubscribeUrl);
 
   return `
 <!DOCTYPE html>
@@ -335,11 +351,13 @@ export function generateArticleEmailHtml(
   articleUrl: string,
   unsubscribeUrl: string
 ): string {
-  // Escape user-provided content to prevent XSS attacks.
+  // Text content nodes use full HTML escaping (including `&` → `&amp;`).
+  // URL href attributes use URL-specific escaping that preserves `&` as a
+  // valid query-parameter separator.
   const escapedTitle = escapeHtml(articleTitle);
   const escapedSummary = escapeHtml(articleSummary);
-  const escapedArticleUrl = escapeHtml(articleUrl);
-  const escapedUnsubscribeUrl = escapeHtml(unsubscribeUrl);
+  const escapedArticleUrl = escapeUrlForHtmlAttr(articleUrl);
+  const escapedUnsubscribeUrl = escapeUrlForHtmlAttr(unsubscribeUrl);
 
   return `
 <!DOCTYPE html>
