@@ -1,6 +1,10 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
-import { subscribeEmail, generateConfirmationEmailHtml, sendEmailViaResend } from "../../../lib/newsletter";
+import {
+  subscribeEmail,
+  generateConfirmationEmailHtml,
+  sendEmailViaResend,
+} from "../../../lib/newsletter";
 
 /**
  * POST /api/newsletter/subscribe
@@ -93,9 +97,9 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Subscribe the email.
-  let subscriber;
+  let subscribeResult;
   try {
-    subscriber = await subscribeEmail(env.SUBSCRIBERS_KV, email);
+    subscribeResult = await subscribeEmail(env.SUBSCRIBERS_KV, email);
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
@@ -104,7 +108,18 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // Send confirmation email.
+  const { subscriber, isNew } = subscribeResult;
+
+  // Skip confirmation email for already-subscribed addresses.
+  // Return 200 to avoid leaking subscription status (prevents email enumeration).
+  if (!isNew) {
+    return new Response(JSON.stringify({ ok: true }), {
+      status: 200,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+
+  // Send confirmation email for new subscribers.
   const unsubscribeUrl = new URL(
     `/api/newsletter/unsubscribe?token=${encodeURIComponent(subscriber.token)}`,
     env.SITE_URL
