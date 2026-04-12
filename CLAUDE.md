@@ -43,7 +43,7 @@ User Browser
 | `AI` | `Ai` | Workers AI for LLM article generation |
 | `DB` | `D1Database` | User profiles, community notes, and RSS entry storage |
 | `AUTH_KV` | `KVNamespace` | Session storage (GitHub OAuth) |
-| `INTERNAL_API_TOKEN` | `string` | Rate-limits `/api/search`, `/api/generate-article`, and `/api/newsletter/send` |
+| `INTERNAL_API_TOKEN` | `string` | Rate-limits `/api/search`, `/api/generate-article`, `/api/fetch-rss`, and `/api/newsletter/send` |
 | `GITHUB_CLIENT_ID/SECRET` | `string` | GitHub OAuth app credentials |
 | `SUBSCRIBERS_KV` | `KVNamespace` | Newsletter subscriber storage |
 | `RESEND_API_KEY` | `string` | Resend API key for email sending |
@@ -65,7 +65,7 @@ In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only wo
   - `fetch-rss.ts` — RSS feed fetching: crawls targets → stores entries in D1
   - `newsletter/{subscribe,unsubscribe,send}.ts` — Newsletter subscription and delivery
   - `social/post-bluesky.ts` — Bluesky auto-posting endpoint (AT Protocol)
-  - `notes/{index,[id]}.ts` — Community notes CRUD
+  - `notes/{index,[id],[id]/helpful}.ts` — Community notes CRUD + helpful votes
   - `bookmarks/{index,[slug]}.ts` — Bookmark management
   - `profile/{index,[username]}.ts` — User profile management
 - **`src/lib/`** — Shared server utilities
