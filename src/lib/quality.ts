@@ -18,10 +18,11 @@
  *    blog     → 15 pts
  *    speculative → 5 pts
  *
- * 4. **Community notes penalty** (0 to −10 pts)
+ * 4. **Community notes penalty** (0 to −NOTES_PENALTY_MAX pts)
  *    Each community note suggests a potential correction or issue was raised.
- *    The penalty is capped at 10 pts: penalty = min(10, noteCount * 2)
- *    (0 notes → 0 penalty; 5+ notes → 10 pt penalty)
+ *    The penalty is capped at NOTES_PENALTY_MAX pts:
+ *      penalty = min(NOTES_PENALTY_MAX, noteCount * NOTES_PENALTY_PER_NOTE)
+ *    (0 notes → 0 penalty; 5+ notes → NOTES_PENALTY_MAX pt penalty)
  *
  * Total = clamp(sources_score + official_score + trust_score − notes_penalty, 0, 100)
  *
@@ -44,7 +45,7 @@
  *   trustLevel: "official",
  *   noteCount: 0,
  * })
- * // → { score: 72, grade: "B", breakdown: { sources: 28.5, officialRatio: 18, trustLevel: 25, notesPenalty: 0 } }
+ * // → { score: 72, grade: "B", breakdown: { sources: 28.5, officialRatio: 18, trustLevel: 25, notesPenalty: 0, sourceCount: 5, officialSourceCount: 3 } }
  */
 
 export type QualityInputs = {
@@ -76,6 +77,10 @@ export type QualityScore = {
     trustLevel: number;
     /** Penalty from community notes (0–10). */
     notesPenalty: number;
+    /** Total number of sources listed in the article. */
+    sourceCount: number;
+    /** Number of sources where type === "official". */
+    officialSourceCount: number;
   };
 };
 
@@ -84,6 +89,23 @@ const TRUST_POINTS: Record<"official" | "blog" | "speculative", number> = {
   official: 25,
   blog: 15,
   speculative: 5,
+};
+
+/** Points deducted per community note. */
+const NOTES_PENALTY_PER_NOTE = 2;
+
+/** Maximum total penalty that community notes can apply. */
+const NOTES_PENALTY_MAX = 10;
+
+/**
+ * Grade badge colour map — maps each letter grade to its hex colour.
+ * Exported so UI components share a single source of truth.
+ */
+export const GRADE_COLORS: Record<QualityScore["grade"], string> = {
+  A: "#22c55e",
+  B: "#3d8ef5",
+  C: "#f59e0b",
+  D: "#ef4444",
 };
 
 /**
@@ -111,8 +133,8 @@ export function computeQualityScore(inputs: QualityInputs): QualityScore {
   // --- 3. Trust level score ---
   const trustScore = TRUST_POINTS[trustLevel];
 
-  // --- 4. Notes penalty (cap at 10) ---
-  const notesPenalty = Math.min(10, noteCount * 2);
+  // --- 4. Notes penalty (capped at NOTES_PENALTY_MAX) ---
+  const notesPenalty = Math.min(NOTES_PENALTY_MAX, noteCount * NOTES_PENALTY_PER_NOTE);
 
   // --- Composite ---
   const raw = sourcesScore + officialRatioScore + trustScore - notesPenalty;
@@ -129,6 +151,8 @@ export function computeQualityScore(inputs: QualityInputs): QualityScore {
       officialRatio: officialRatioScore,
       trustLevel: trustScore,
       notesPenalty,
+      sourceCount,
+      officialSourceCount,
     },
   };
 }

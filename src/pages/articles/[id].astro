@@ -3,7 +3,7 @@ import { getCollection, render } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { trustLabelMap } from "../../constants/trustLevels";
 import { formatDate } from "../../utils/date";
-import { computeArticleQualityFromData } from "../../lib/quality";
+import { computeArticleQualityFromData, GRADE_COLORS } from "../../lib/quality";
 import { getCounterpartArticleId } from "../../lib/i18n";
 import { isBookmarked } from "../../lib/bookmarks";
 import { env } from "cloudflare:workers";
@@ -44,14 +44,7 @@ try {
 
 const quality = computeArticleQualityFromData(article.data, noteCount);
 
-// Grade badge colors — use CSS custom properties consistent with trust badges
-const gradeColor: Record<string, string> = {
-  A: "#22c55e",
-  B: "#3d8ef5",
-  C: "#f59e0b",
-  D: "#ef4444",
-};
-const qualityColor = gradeColor[quality.grade] ?? "#6b7db3";
+const qualityColor = GRADE_COLORS[quality.grade] ?? "#6b7db3";
 
 // Format the notes penalty as "-N" only when N > 0; show "0" when there is no penalty.
 const notesPenaltyDisplay =

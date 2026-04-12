@@ -27,7 +27,7 @@ import { getCollection } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
 import { timingSafeEqual } from "../../lib/auth";
 import { isAdminUser } from "../../lib/admin";
-import { computeArticleQualityFromData, type QualityScore } from "../../lib/quality";
+import { computeArticleQualityFromData, GRADE_COLORS, type QualityScore } from "../../lib/quality";
 import { env } from "cloudflare:workers";
 
 export const prerender = false;
@@ -117,16 +117,13 @@ type ArticleQualityRow = {
 const rows: ArticleQualityRow[] = allArticles.map((article) => {
   const noteCount = noteCountMap.get(article.id) ?? 0;
   const score = computeArticleQualityFromData(article.data, noteCount);
-  const officialSourceCount = article.data.sources.filter(
-    (s) => s.type === "official"
-  ).length;
   return {
     id: article.id,
     title: article.data.title,
     date: article.data.date,
     score,
-    sourceCount: article.data.sources.length,
-    officialSourceCount,
+    sourceCount: score.breakdown.sourceCount,
+    officialSourceCount: score.breakdown.officialSourceCount,
     noteCount,
   };
 });
@@ -151,13 +148,8 @@ for (const r of rows) {
 // ---------------------------------------------------------------------------
 const chartRows = rows.slice(0, 30).reverse();
 
-// Grade badge colour helper (must be a plain JS function, not TS const map,
-// so Astro can evaluate it in the template without import issues)
 function gradeColor(grade: string): string {
-  if (grade === "A") return "#22c55e";
-  if (grade === "B") return "#3d8ef5";
-  if (grade === "C") return "#f59e0b";
-  return "#ef4444";
+  return GRADE_COLORS[grade as QualityScore["grade"]] ?? "#ef4444";
 }
 
 function formatDate(date: Date): string {
