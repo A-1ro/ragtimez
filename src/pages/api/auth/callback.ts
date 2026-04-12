@@ -4,6 +4,7 @@ import {
   consumeOAuthState,
   createSession,
   buildSessionCookie,
+  validateReturnTo,
 } from "../../../lib/session";
 
 const GITHUB_TOKEN_URL = "https://github.com/login/oauth/access_token";
@@ -57,8 +58,8 @@ export const GET: APIRoute = async ({ request }) => {
   }
 
   // Verify the one-time CSRF state token.
-  const stateValid = await consumeOAuthState(env.AUTH_KV, state);
-  if (!stateValid) {
+  const stateResult = await consumeOAuthState(env.AUTH_KV, state);
+  if (!stateResult.valid) {
     return new Response("Invalid or expired OAuth state parameter", {
       status: 400,
     });
@@ -186,12 +187,17 @@ export const GET: APIRoute = async ({ request }) => {
 
   const isSecure = new URL(request.url).protocol === "https:";
 
+  // Redirect to the original destination (if one was stored in the OAuth state
+  // payload) or fall back to the home page.  Defence-in-depth: even though
+  // returnTo was validated by validateReturnTo() in login.ts before being
+  // embedded in the state, we re-validate here so that a compromised or
+  // manually crafted KV entry cannot introduce an open-redirect.
+  const redirectLocation = validateReturnTo(stateResult.returnTo) ?? "/";
+
   return new Response(null, {
     status: 302,
     headers: {
-      // Redirect to the home page unconditionally.  A dynamic `returnTo`
-      // parameter is intentionally avoided to prevent open-redirect attacks.
-      Location: "/",
+      Location: redirectLocation,
       "Set-Cookie": buildSessionCookie(sessionId, isSecure),
     },
   });
