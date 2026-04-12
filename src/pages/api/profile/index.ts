@@ -58,38 +58,42 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   const payload = body as Record<string, unknown>;
 
   // Validate each URL field.  Fields absent from the payload are left
-  // unchanged (we use COALESCE in the UPDATE below).
+  // unchanged (self-assignment in the UPDATE below keeps existing values).
   const githubUrlRaw   = "github_url"   in payload ? String(payload.github_url   ?? "") : undefined;
   const xUrlRaw        = "x_url"        in payload ? String(payload.x_url        ?? "") : undefined;
   const linkedinUrlRaw = "linkedin_url" in payload ? String(payload.linkedin_url ?? "") : undefined;
   const bioRaw         = "bio"          in payload ? String(payload.bio           ?? "") : undefined;
 
-  // Validate supplied URL fields.
+  // Validate supplied URL fields and retain results to avoid calling
+  // validateProfileUrl a second time during the UPDATE below.
+  let githubUrlResult: ReturnType<typeof validateProfileUrl> | null = null;
   if (githubUrlRaw !== undefined) {
-    const result = validateProfileUrl(githubUrlRaw, "github");
-    if (!result.valid) {
+    githubUrlResult = validateProfileUrl(githubUrlRaw, "github");
+    if (!githubUrlResult.valid) {
       return new Response(
-        JSON.stringify({ error: `github_url: ${result.error}` }),
+        JSON.stringify({ error: `github_url: ${githubUrlResult.error}` }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
   }
 
+  let xUrlResult: ReturnType<typeof validateProfileUrl> | null = null;
   if (xUrlRaw !== undefined) {
-    const result = validateProfileUrl(xUrlRaw, "x");
-    if (!result.valid) {
+    xUrlResult = validateProfileUrl(xUrlRaw, "x");
+    if (!xUrlResult.valid) {
       return new Response(
-        JSON.stringify({ error: `x_url: ${result.error}` }),
+        JSON.stringify({ error: `x_url: ${xUrlResult.error}` }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
   }
 
+  let linkedinUrlResult: ReturnType<typeof validateProfileUrl> | null = null;
   if (linkedinUrlRaw !== undefined) {
-    const result = validateProfileUrl(linkedinUrlRaw, "linkedin");
-    if (!result.valid) {
+    linkedinUrlResult = validateProfileUrl(linkedinUrlRaw, "linkedin");
+    if (!linkedinUrlResult.valid) {
       return new Response(
-        JSON.stringify({ error: `linkedin_url: ${result.error}` }),
+        JSON.stringify({ error: `linkedin_url: ${linkedinUrlResult.error}` }),
         { status: 400, headers: { "Content-Type": "application/json" } }
       );
     }
@@ -106,28 +110,23 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
   try {
     const githubId = locals.user.githubId;
 
-    // Resolve final values: validated URL (possibly null) or keep existing.
-    const githubUrlResult   = githubUrlRaw   !== undefined ? validateProfileUrl(githubUrlRaw,   "github")   : null;
-    const xUrlResult        = xUrlRaw        !== undefined ? validateProfileUrl(xUrlRaw,        "x")        : null;
-    const linkedinUrlResult = linkedinUrlRaw !== undefined ? validateProfileUrl(linkedinUrlRaw, "linkedin") : null;
-
     // Build UPDATE — only modify columns that were present in the request body.
-    // Columns not supplied keep their existing value via COALESCE with a
-    // subquery.  This avoids overwriting fields the user didn't touch.
+    // Columns not supplied use self-assignment (column = column) to keep their
+    // existing value without additional bind parameters.
     await env.DB.prepare(
       `UPDATE users
        SET
-         github_url   = ${githubUrlResult   !== null ? "?" : "(SELECT github_url   FROM users WHERE github_id = ?)"},
-         x_url        = ${xUrlResult        !== null ? "?" : "(SELECT x_url        FROM users WHERE github_id = ?)"},
-         linkedin_url = ${linkedinUrlResult !== null ? "?" : "(SELECT linkedin_url FROM users WHERE github_id = ?)"},
-         bio          = ${bioRaw            !== undefined ? "?" : "(SELECT bio          FROM users WHERE github_id = ?)"}
+         github_url   = ${githubUrlResult   !== null ? "?" : "github_url"},
+         x_url        = ${xUrlResult        !== null ? "?" : "x_url"},
+         linkedin_url = ${linkedinUrlResult !== null ? "?" : "linkedin_url"},
+         bio          = ${bioRaw            !== undefined ? "?" : "bio"}
        WHERE github_id = ?`
     )
       .bind(
-        ...(githubUrlResult   !== null ? [githubUrlResult.url]   : [githubId]),
-        ...(xUrlResult        !== null ? [xUrlResult.url]        : [githubId]),
-        ...(linkedinUrlResult !== null ? [linkedinUrlResult.url] : [githubId]),
-        ...(bioRaw            !== undefined ? [bioRaw.trim() || null] : [githubId]),
+        ...(githubUrlResult   !== null ? [githubUrlResult.url]   : []),
+        ...(xUrlResult        !== null ? [xUrlResult.url]        : []),
+        ...(linkedinUrlResult !== null ? [linkedinUrlResult.url] : []),
+        ...(bioRaw            !== undefined ? [bioRaw.trim() || null] : []),
         githubId
       )
       .run();
