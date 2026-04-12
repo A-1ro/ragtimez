@@ -4,7 +4,7 @@ import cloudflare from "@astrojs/cloudflare";
 
 // https://astro.build/config
 export default defineConfig({
-  site: "https://ragtimez.com",
+  site: process.env.SITE_URL ?? "http://localhost:4321",
   output: "server",
   adapter: cloudflare({
     // Disable remote binding proxy so local builds and CI work without
