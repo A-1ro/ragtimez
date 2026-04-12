@@ -278,6 +278,17 @@ const alternateLangHref: string | null = counterpart
     font-size: 0.8125rem;
   }
 
+  /* On mobile, anchor the popup to the right edge so it stays within the viewport */
+  @media (max-width: 480px) {
+    .quality-breakdown {
+      left: auto;
+      right: 0;
+      min-width: 0;
+      width: max-content;
+      max-width: calc(100vw - 2rem);
+    }
+  }
+
   .breakdown-list {
     margin: 0;
     padding: 0;

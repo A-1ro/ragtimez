@@ -329,6 +329,17 @@ if (user && env.DB) {
     font-size: 0.8125rem;
   }
 
+  /* モバイルでポップアップが画面右にはみ出さないよう右寄せに切り替える */
+  @media (max-width: 480px) {
+    .quality-breakdown {
+      left: auto;
+      right: 0;
+      min-width: 0;
+      width: max-content;
+      max-width: calc(100vw - 2rem);
+    }
+  }
+
   .breakdown-list {
     margin: 0;
     padding: 0;
