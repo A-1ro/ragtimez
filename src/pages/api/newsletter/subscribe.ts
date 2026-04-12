@@ -22,6 +22,7 @@ import {
  * Error responses:
  *   400 – missing email parameter, invalid email format, or invalid content type
  *   403 – CSRF check failed (Origin mismatch)
+ *   429 – rate limit exceeded (1 request per IP per 60 seconds)
  *   500 – KV or Resend binding unavailable
  *   502 – Resend API error or email send failed
  */
@@ -40,6 +41,19 @@ export const POST: APIRoute = async ({ request }) => {
       { status: 500, headers: { "Content-Type": "application/json" } }
     );
   }
+
+  // Rate limiting: 1 request per IP per 60 seconds.
+  // Checked before CSRF validation to reduce processing cost for abusive requests.
+  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
+  const rateKey = `rate:subscribe:${ip}`;
+  const recent = await env.SUBSCRIBERS_KV.get(rateKey);
+  if (recent) {
+    return new Response(
+      JSON.stringify({ error: "Too many requests. Please try again later." }),
+      { status: 429, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  await env.SUBSCRIBERS_KV.put(rateKey, "1", { expirationTtl: 60 });
 
   // CSRF check: verify Origin matches SITE_URL.
   const origin = request.headers.get("Origin");
