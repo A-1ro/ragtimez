@@ -954,6 +954,15 @@ if (user && env.DB) {
       padding: 1rem;
     }
 
+    /* WCAG 2.5.8: Tag items — ensure 44px minimum touch height on mobile */
+    .tag {
+      display: inline-flex;
+      align-items: center;
+      min-height: 44px;
+      padding: 0 0.75em;
+      font-size: 0.8125rem;
+    }
+
     .community-notes {
       margin-top: 2rem;
       padding-top: 1.5rem;
