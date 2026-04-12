@@ -230,18 +230,34 @@ function buildContext(
 /**
  * RSS エントリから Tavily 検索クエリを動的に生成する。
  *
- * 上位エントリのタイトルからキーワードを抽出し、2〜3 件の具体的なクエリを作る。
+ * ソースラベルごとに最新エントリのタイトルをそのままクエリとして使用する。
+ * タイトルが短すぎる場合は年号を付加してクエリを補強する。
  * クエリが多すぎると Tavily の無料枠を消費するため上限 3 件に制限する。
  */
 function buildTavilyQueries(entries: RssEntry[], date: string): string[] {
   const year = date.slice(0, 4);
-  // ユニークなソースラベルを収集（例: "Azure", "OpenAI" etc.）
-  const sourceLabels = [...new Set(entries.map((e) => e.source_label))].slice(0, 3);
 
-  // ソースラベルごとに "latest AI news" スタイルのクエリを生成
-  const queries = sourceLabels.map((label) => `${label} AI latest updates ${year}`);
+  // ソースラベルごとに最新エントリを1件選ぶ（published_at降順で最初に現れるもの）
+  const latestBySource = new Map<string, RssEntry>();
+  for (const entry of entries) {
+    if (!latestBySource.has(entry.source_label)) {
+      latestBySource.set(entry.source_label, entry);
+    }
+  }
 
-  // エントリが 1 種類のソースのみの場合は汎用クエリを追加
+  const queries: string[] = [];
+  for (const entry of latestBySource.values()) {
+    if (queries.length >= 3) break;
+
+    const title = entry.title.trim();
+    if (title.length === 0) continue;
+
+    // タイトルが短すぎる（20文字未満）場合は年号を付加して検索精度を補強する
+    const query = title.length < 20 ? `${title} ${year}` : title;
+    queries.push(query);
+  }
+
+  // エントリが少なくクエリが 2 件未満の場合は汎用フォールバッククエリを追加
   if (queries.length < 2) {
     queries.push(`LLM RAG agent latest news ${year}`);
   }
@@ -346,14 +362,16 @@ interface TopicSelection {
  * Call the Workers AI LLM to generate an article from the research context.
  * Uses three separate calls to implement the one-topic deep-dive approach:
  *   0. Topic selection — choose the most technically interesting & actionable topic
+ *   [opt] Tavily 追加検索 — 選定トピックを基に追加検索してコンテキストを強化する
  *   1. Metadata (title, summary, tags) — small JSON, reliable
  *   2. Body — plain Markdown, deep-dive focused
  *
- * @param entries      コンテキストとして渡す RSS エントリ（Tavily 結果のマージ済み）
- * @param date         記事の日付（YYYY-MM-DD）
- * @param pastArticles 重複回避のための過去記事リスト
- * @param lang         生成言語（"ja" | "en"）
- * @param fullTextMap  Tavily /extract で取得した URL→本文マップ（オプション）
+ * @param entries        コンテキストとして渡す RSS エントリ（Tavily 結果のマージ済み）
+ * @param date           記事の日付（YYYY-MM-DD）
+ * @param pastArticles   重複回避のための過去記事リスト
+ * @param lang           生成言語（"ja" | "en"）
+ * @param fullTextMap    Tavily /extract で取得した URL→本文マップ（オプション）
+ * @param tavilyApiKey   Tavily API キー（設定されている場合のみ追加検索を実行）
  */
 async function generateWithLLM(
   entries: RssEntry[],
@@ -361,6 +379,7 @@ async function generateWithLLM(
   pastArticles: { title: string; tags: string[]; date: string }[],
   lang: "ja" | "en" = "ja",
   fullTextMap?: Map<string, string>,
+  tavilyApiKey?: string,
 ): Promise<{
   title: string;
   summary: string;
@@ -369,8 +388,9 @@ async function generateWithLLM(
   selectedTopic: string;
   selectedEntries: RssEntry[];
 }> {
-  // fullTextMap が存在する場合は本文付きのコンテキストを使用
-  const hasFullText = fullTextMap !== undefined && fullTextMap.size > 0;
+  // Step 0 のシステムプロンプト用に初期 fullTextMap の有無を確認する。
+  // Step 0.5 の追加検索前の時点での状態を使うため、ここで一度だけ評価する。
+  const hasFullTextInitial = fullTextMap !== undefined && fullTextMap.size > 0;
 
   // --- Step 0: Topic selection ---
   // トピック選定時点ではサマリーのみを使用（本文はトークン節約のため Step 2 で使用）
@@ -409,7 +429,7 @@ async function generateWithLLM(
             "3. Is most actionable/useful for working engineers\n" +
             "4. Has enough information for a 1000-word deep dive\n" +
             "5. Does NOT overlap with topics already covered in recent articles (see list below)\n\n" +
-            (hasFullText
+            (hasFullTextInitial
               ? "Note: Full article body text has been retrieved for many of these entries. Prefer topics where the content field is detailed and substantive.\n\n"
               : "") +
             "If every high-depth topic has been covered, pick the news item that adds the most NEW technical information not in the past articles, and explain what's new in the reason.\n\n" +
@@ -448,10 +468,71 @@ async function generateWithLLM(
   const validIndices = topicSelection.indices.filter(
     (idx) => typeof idx === "number" && idx >= 1 && idx <= entries.length,
   );
-  const selectedEntries =
+  let selectedEntries =
     validIndices.length > 0
       ? validIndices.map((idx) => entries[idx - 1])
       : entries; // fallback to all if no valid indices
+
+  // --- Step 0.5: トピック選定後の追加 Tavily 検索（オプション）---
+  // tavilyApiKey が渡されている場合のみ実行。
+  // 選定トピック（英語1文）をクエリとして追加検索し、fullTextMap を強化する。
+  // 失敗時はそのまま続行（既存のフォールバック動作を維持）。
+  if (tavilyApiKey && topicSelection.topic) {
+    try {
+      const additionalQuery = topicSelection.topic;
+      console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery.slice(0, 200)}"`);
+
+      const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
+      console.log(`Tavily 追加検索結果: ${additionalSearchResults.length} 件`);
+
+      if (additionalSearchResults.length > 0) {
+        // 追加検索結果を selectedEntries にマージして buildContext で参照可能にする
+        selectedEntries = mergeWithTavilyResults(selectedEntries, additionalSearchResults);
+
+        // 追加検索結果から上位 3 件の URL を extract 対象とする（無料枠節約）
+        const additionalUrls = additionalSearchResults
+          .slice(0, 3)
+          .map((r) => r.url);
+
+        console.log(`Tavily 追加 extract: ${additionalUrls.length} URLs`);
+        const additionalExtractResults = await tavilyExtract(tavilyApiKey, additionalUrls);
+        console.log(`Tavily 追加 extract 結果: ${additionalExtractResults.length} 件`);
+
+        if (additionalExtractResults.length > 0) {
+          // 既存の fullTextMap に追加 extract 結果をマージする
+          // （既存エントリは上書きしない: 先着の RSS/初回 Tavily 結果を優先）
+          const currentMap = fullTextMap ?? new Map<string, string>();
+          let totalChars = [...currentMap.values()].reduce((acc, v) => acc + v.length, 0);
+
+          for (const result of additionalExtractResults) {
+            if (currentMap.has(result.url)) continue;
+            if (totalChars >= TAVILY_CONTEXT_MAX_TOTAL_CHARS) break;
+            if (!result.raw_content) continue;
+
+            const remaining = TAVILY_CONTEXT_MAX_TOTAL_CHARS - totalChars;
+            const trimmed = result.raw_content.slice(
+              0,
+              Math.min(TAVILY_CONTENT_MAX_CHARS, remaining),
+            );
+            currentMap.set(result.url, trimmed);
+            totalChars += trimmed.length;
+          }
+
+          fullTextMap = currentMap;
+          console.log(`fullTextMap 更新後エントリ数: ${fullTextMap.size}`);
+        }
+      }
+    } catch (err) {
+      // 追加検索失敗時は警告のみ出力して続行（既存コンテキストで生成）
+      console.warn(
+        `Tavily 追加検索失敗（続行）: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+  }
+
+  // Step 0.5 完了後に hasFullText を確定させる
+  // （追加検索によって fullTextMap が新たに生成された場合も正しく反映される）
+  const hasFullText = fullTextMap !== undefined && fullTextMap.size > 0;
 
   // 選定エントリのみを使って本文付きコンテキストを構築
   // fullTextMap が渡された場合は本文を使用し、LLM に詳細な情報を提供する
@@ -845,7 +926,15 @@ export const POST: APIRoute = async ({ request }) => {
   };
   try {
     const pastArticles = await loadRecentPastArticles(dateInput);
-    llmResult = await generateWithLLM(contextEntries, dateInput, pastArticles, lang, fullTextMap);
+    llmResult = await generateWithLLM(
+      contextEntries,
+      dateInput,
+      pastArticles,
+      lang,
+      fullTextMap,
+      // tavilyApiKey を渡すことで、トピック選定後の追加検索を有効にする
+      env.TAVILY_API_KEY,
+    );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
