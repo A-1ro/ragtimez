@@ -14,7 +14,8 @@
   "dependencies": {
     "@astrojs/cloudflare": "^13.1.6",
     "@astrojs/rss": "^4.0.18",
-    "astro": "^6.1.4"
+    "astro": "^6.1.4",
+    "marked": "^18.0.0"
   },
   "devDependencies": {
     "@cloudflare/workers-types": "^4.20260410.1",

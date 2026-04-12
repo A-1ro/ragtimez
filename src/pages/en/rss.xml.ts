@@ -1,6 +1,7 @@
 import rss from "@astrojs/rss";
 import { getCollection } from "astro:content";
 import type { APIContext } from "astro";
+import { marked } from "marked";
 
 export async function GET(context: APIContext) {
   const articles = await getCollection("articles", ({ data }) => !data.draft && data.lang === "en");
@@ -22,7 +23,7 @@ export async function GET(context: APIContext) {
       // En article IDs already include the ".en" suffix (e.g. "2026-04-10.en").
       // The [id].astro route matches on the full ID, so the URL uses it as-is.
       link: `/en/articles/${article.id}/`,
-      content: article.rendered?.html,
+      content: article.body ? marked.parse(article.body, { async: false }) as string : undefined,
     })),
     customData: `<language>en-us</language>`,
   });
