@@ -126,7 +126,7 @@ export const POST: APIRoute = async ({ request }) => {
   ).href;
 
   // Send emails in batches (5 parallel).
-  const sent: string[] = [];
+  let sentCount = 0;
   const failed: Array<{ email: string; error: string }> = [];
   const batchSize = 5;
 
@@ -154,7 +154,7 @@ export const POST: APIRoute = async ({ request }) => {
             )
           );
 
-          sent.push(subscriber.email);
+          sentCount++;
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           // Mask email address in error responses to avoid leaking PII in API responses/logs.
@@ -172,7 +172,7 @@ export const POST: APIRoute = async ({ request }) => {
   return new Response(
     JSON.stringify({
       ok: failed.length === 0,
-      sent: sent.length,
+      sent: sentCount,
       failed: failed.length,
       errors: failed,
     }),
