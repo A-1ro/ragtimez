@@ -63,7 +63,7 @@ function getFlagAll(flag: string): string[] {
         results.push(args[i]);
         i++;
       }
-      i--; // outer loop will increment
+      i--; // Compensate for the outer for-loop's i++ so args[i] (next flag) is reprocessed correctly
     }
   }
   return results;
