@@ -241,7 +241,7 @@ wrangler pages secret put INTERNAL_API_TOKEN
 Once the index has crawled at least one source, test it:
 
 ```bash
-# Local dev (wrangler pages dev)
+# Local dev (wrangler pages dev — default port is 8788, but may vary)
 curl -H "Authorization: Bearer <your-token>" \
   "http://localhost:8788/api/search?q=Azure+OpenAI+latest&limit=5"
 
@@ -269,7 +269,7 @@ Expected response shape:
 
 ### GitHub OAuth & AUTH_KV Setup
 
-GitHub OAuth enables user login. Session tokens are stored in a Cloudflare KV namespace (`AUTH_KV`). In production, the KV binding is configured via the Cloudflare Dashboard — **not** via `wrangler.toml` (the KV block in `wrangler.toml` is intentionally left as a placeholder and is only used as a reference for local development with `wrangler pages dev`).
+GitHub OAuth enables user login. Session tokens are stored in a Cloudflare KV namespace (`AUTH_KV`). The `wrangler.toml` in this repository already contains the project's own namespace IDs. If you are deploying your own instance, you will need to replace those IDs with the ones created for your account (see Step 2 below). In production, the KV binding must also be configured via the Cloudflare Dashboard in addition to `wrangler.toml`.
 
 #### Step 1 – Create a GitHub OAuth App
 
@@ -285,9 +285,11 @@ GitHub OAuth enables user login. Session tokens are stored in a Cloudflare KV na
 3. Click **Register application**.
 4. On the next screen, note your **Client ID** and generate a **Client Secret**.
 
-For local development with `wrangler pages dev`, set the callback URL to `http://localhost:8788/api/auth/callback` (you can add multiple callback URLs or create a separate OAuth App for local use).
+For local development with `wrangler pages dev`, also add `http://localhost:8788/api/auth/callback` as an authorized callback URL. GitHub OAuth Apps support multiple callback URLs on the same app, so you do not need a separate app for local use.
 
 #### Step 2 – Create the AUTH_KV namespace
+
+> **Note:** If you cloned this repository, `wrangler.toml` already contains the original project's namespace IDs. Replace them with your own before proceeding.
 
 ```bash
 # Create the KV namespace (production)
@@ -297,7 +299,7 @@ wrangler kv namespace create AUTH_KV
 wrangler kv namespace create AUTH_KV --preview
 ```
 
-Copy the returned namespace IDs and update the `AUTH_KV` entry in `wrangler.toml`:
+Replace the existing `AUTH_KV` entry in `wrangler.toml` with the IDs returned by the commands above:
 
 ```toml
 [[kv_namespaces]]
@@ -316,6 +318,14 @@ wrangler pages secret put GITHUB_CLIENT_SECRET
 ```
 
 Enter the Client ID and Client Secret from Step 1 when prompted. These secrets are automatically available to the Pages project at runtime via `context.locals.runtime.env`.
+
+#### Step 4 – (Optional) Grant admin access
+
+The `/admin/quality` page is restricted to a specific list of GitHub user IDs. Set the `ADMIN_GITHUB_IDS` secret to a comma-separated list of numeric GitHub IDs (e.g., `"12345,67890"`) to allow those accounts to access it via their session. If the secret is unset, session-based admin access is disabled entirely.
+
+```bash
+wrangler pages secret put ADMIN_GITHUB_IDS
+```
 
 ### Local development
 
