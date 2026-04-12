@@ -233,16 +233,17 @@ function buildContext(
  * 上位エントリのタイトルからキーワードを抽出し、2〜3 件の具体的なクエリを作る。
  * クエリが多すぎると Tavily の無料枠を消費するため上限 3 件に制限する。
  */
-function buildTavilyQueries(entries: RssEntry[]): string[] {
+function buildTavilyQueries(entries: RssEntry[], date: string): string[] {
+  const year = date.slice(0, 4);
   // ユニークなソースラベルを収集（例: "Azure", "OpenAI" etc.）
   const sourceLabels = [...new Set(entries.map((e) => e.source_label))].slice(0, 3);
 
   // ソースラベルごとに "latest AI news" スタイルのクエリを生成
-  const queries = sourceLabels.map((label) => `${label} AI latest updates 2026`);
+  const queries = sourceLabels.map((label) => `${label} AI latest updates ${year}`);
 
   // エントリが 1 種類のソースのみの場合は汎用クエリを追加
   if (queries.length < 2) {
-    queries.push("LLM RAG agent latest news 2026");
+    queries.push(`LLM RAG agent latest news ${year}`);
   }
 
   return queries.slice(0, 3);
@@ -776,7 +777,7 @@ export const POST: APIRoute = async ({ request }) => {
   if (env.TAVILY_API_KEY) {
     try {
       // Step A: RSS エントリから検索クエリを生成し、Tavily /search を実行
-      const tavilyQueries = buildTavilyQueries(contextEntries);
+      const tavilyQueries = buildTavilyQueries(contextEntries, dateInput);
       console.log(`Tavily search: ${tavilyQueries.length} queries`);
 
       const tavilyResults = await tavilySearch(env.TAVILY_API_KEY, tavilyQueries);
