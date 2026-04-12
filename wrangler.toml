@@ -3,6 +3,9 @@ pages_build_output_dir = "./dist"
 compatibility_date = "2025-04-07"
 compatibility_flags = ["nodejs_compat"]
 
+[vars]
+SITE_URL = "https://ragtimez.com"
+
 # Workers AI binding – used for LLM / embedding calls from Pages Functions
 [ai]
 binding = "AI"
