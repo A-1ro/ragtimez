@@ -1,22 +1,22 @@
 ---
 import { getCollection } from "astro:content";
-import BaseLayout from "../layouts/BaseLayout.astro";
-import { trustLabelMap } from "../constants/trustLevels";
-import { formatDate } from "../utils/date";
-import { getBookmarks } from "../lib/bookmarks";
+import BaseLayout from "../../layouts/BaseLayout.astro";
+import { trustLabelMap } from "../../constants/trustLevels";
+import { formatDate } from "../../utils/date";
+import { getBookmarks } from "../../lib/bookmarks";
 import { env } from "cloudflare:workers";
-import { getLangFromPath, t } from "../lib/i18n";
+import { t } from "../../lib/i18n";
 
 // SSR: rendered per-request so we can gate on session
 export const prerender = false;
 
-const lang = getLangFromPath(Astro.url.pathname);
+const lang = "en";
 const user = Astro.locals.user;
 
-// Redirect unauthenticated visitors to GitHub login
+// Redirect unauthenticated visitors to GitHub login, returning to /en/bookmarks
 if (!user) {
   return Astro.redirect(
-    `/api/auth/login?redirect=${encodeURIComponent("/bookmarks")}`
+    `/api/auth/login?redirect=${encodeURIComponent("/en/bookmarks")}`
   );
 }
 
@@ -44,7 +44,7 @@ const bookmarkedArticles = bookmarkedSlugs
   .filter((a): a is NonNullable<typeof a> => a !== undefined);
 ---
 
-<BaseLayout title={`${t(lang, "bookmarksPageTitle")} | RAGtimeZ`} lang={lang} alternateLangHref="/en/bookmarks">
+<BaseLayout title={`${t(lang, "bookmarksPageTitle")} | RAGtimeZ`} lang={lang} alternateLangHref="/bookmarks">
   <section class="bookmarks-header">
     <h1 class="page-title">
       <svg class="page-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
@@ -61,7 +61,7 @@ const bookmarkedArticles = bookmarkedSlugs
         <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
       </svg>
       <p>{t(lang, "bookmarksEmpty")}</p>
-      <a href="/" class="browse-link">{t(lang, "bookmarksBrowse")}</a>
+      <a href="/en" class="browse-link">{t(lang, "bookmarksBrowse")}</a>
     </div>
   ) : (
     <section class="article-list" aria-label={t(lang, "bookmarksArticleList")}>
@@ -69,7 +69,7 @@ const bookmarkedArticles = bookmarkedSlugs
         const trust = trustLabelMap[article.data.trustLevel];
         return (
           <article class="card">
-            <a href={`/articles/${article.id}`} class="card-link">
+            <a href={`/en/articles/${article.id}`} class="card-link">
               <div class="card-top">
                 <time datetime={article.data.date.toISOString()} class="card-date">
                   {formatDate(article.data.date)}
