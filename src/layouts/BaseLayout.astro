@@ -275,6 +275,10 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         font-weight: 600;
         color: var(--color-text);
         transition: color 0.2s;
+        max-width: 120px;
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
       }
 
       .logout-form {
@@ -340,6 +344,239 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         text-decoration: none;
       }
 
+      /* ---- Hamburger button (mobile only) ---- */
+      .hamburger-btn {
+        display: none; /* hidden on desktop */
+        align-items: center;
+        justify-content: center;
+        width: 40px;
+        height: 40px;
+        background: none;
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        color: var(--color-text);
+        transition: border-color 0.2s, background 0.2s;
+        flex-shrink: 0;
+      }
+      .hamburger-btn:hover {
+        border-color: var(--color-muted);
+        background: rgba(61, 142, 245, 0.06);
+      }
+
+      /* ---- Drawer overlay ---- */
+      .drawer-overlay {
+        display: none;
+        position: fixed;
+        inset: 0;
+        background: rgba(8, 12, 30, 0.65);
+        backdrop-filter: blur(2px);
+        -webkit-backdrop-filter: blur(2px);
+        z-index: 200;
+        opacity: 0;
+        transition: opacity 0.25s ease;
+      }
+      .drawer-overlay.is-open {
+        opacity: 1;
+      }
+
+      /* ---- Drawer panel ---- */
+      .drawer-panel {
+        position: fixed;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: min(300px, 85vw);
+        background: var(--color-surface);
+        border-left: 1px solid var(--color-border);
+        z-index: 201;
+        transform: translateX(100%);
+        transition: transform 0.25s ease;
+        display: flex;
+        flex-direction: column;
+        padding: 1.25rem 1.25rem 2rem;
+        gap: 0;
+        overflow-y: auto;
+      }
+      .drawer-panel.is-open {
+        transform: translateX(0);
+      }
+
+      .drawer-header {
+        display: flex;
+        align-items: center;
+        justify-content: space-between;
+        margin-bottom: 1.5rem;
+      }
+
+      .drawer-close-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        width: 36px;
+        height: 36px;
+        background: none;
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        cursor: pointer;
+        color: var(--color-muted);
+        transition: color 0.2s, border-color 0.2s;
+        flex-shrink: 0;
+      }
+      .drawer-close-btn:hover {
+        color: var(--color-text);
+        border-color: var(--color-muted);
+      }
+
+      .drawer-brand {
+        height: 28px;
+        width: auto;
+        display: block;
+      }
+
+      /* Nav items inside drawer */
+      .drawer-nav {
+        display: flex;
+        flex-direction: column;
+        gap: 0.25rem;
+      }
+
+      .drawer-nav-item {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: var(--color-text);
+        text-decoration: none;
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.5rem;
+        transition: background 0.2s, color 0.2s;
+      }
+      .drawer-nav-item:hover {
+        background: rgba(61, 142, 245, 0.08);
+        color: var(--color-accent-soft);
+        text-decoration: none;
+      }
+
+      .drawer-divider {
+        height: 1px;
+        background: var(--color-border);
+        margin: 0.75rem 0;
+      }
+
+      /* User profile block inside drawer */
+      .drawer-user-profile {
+        display: flex;
+        align-items: center;
+        gap: 0.6rem;
+        padding: 0.65rem 0.75rem;
+        border-radius: 0.5rem;
+        text-decoration: none;
+        color: inherit;
+        transition: background 0.2s;
+      }
+      .drawer-user-profile:hover {
+        background: rgba(61, 142, 245, 0.08);
+        text-decoration: none;
+      }
+      .drawer-user-profile:hover .drawer-user-login {
+        color: var(--color-accent-soft);
+      }
+
+      .drawer-user-login {
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--color-text);
+        overflow: hidden;
+        text-overflow: ellipsis;
+        white-space: nowrap;
+        max-width: 180px;
+        transition: color 0.2s;
+      }
+
+      .drawer-admin-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.6rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--color-accent-soft);
+        background: none;
+        border: 1px solid rgba(147, 197, 253, 0.25);
+        border-radius: 0.5rem;
+        padding: 0.65rem 0.75rem;
+        text-decoration: none;
+        transition: color 0.2s, border-color 0.2s, background 0.2s;
+      }
+      .drawer-admin-link:hover {
+        color: var(--color-accent-soft);
+        border-color: var(--color-accent-soft);
+        background: rgba(147, 197, 253, 0.08);
+        text-decoration: none;
+      }
+
+      .drawer-logout-form {
+        margin: 0;
+        padding: 0;
+      }
+      .drawer-logout-btn {
+        width: 100%;
+        text-align: left;
+        font-size: 0.9375rem;
+        font-weight: 500;
+        color: var(--color-muted);
+        background: none;
+        border: 1px solid var(--color-border);
+        border-radius: 0.5rem;
+        padding: 0.65rem 0.75rem;
+        cursor: pointer;
+        transition: color 0.2s, border-color 0.2s;
+      }
+      .drawer-logout-btn:hover {
+        color: var(--color-text);
+        border-color: var(--color-muted);
+      }
+
+      .drawer-login-btn {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        gap: 0.5rem;
+        font-size: 0.9375rem;
+        font-weight: 600;
+        color: var(--color-accent-soft);
+        background: rgba(61, 142, 245, 0.08);
+        border: 1px solid rgba(61, 142, 245, 0.3);
+        border-radius: 0.5rem;
+        padding: 0.65rem 0.75rem;
+        text-decoration: none;
+        transition: background 0.2s, border-color 0.2s, color 0.2s, box-shadow 0.2s;
+      }
+      .drawer-login-btn:hover {
+        background: var(--color-accent);
+        border-color: var(--color-accent);
+        color: #fff;
+        box-shadow: 0 0 16px rgba(61, 142, 245, 0.4);
+        text-decoration: none;
+      }
+
+      /* ---- Mobile breakpoint: show hamburger, hide desktop nav-auth ---- */
+      @media (max-width: 768px) {
+        .hamburger-btn {
+          display: flex;
+        }
+        .nav-auth {
+          display: none;
+        }
+        .drawer-overlay {
+          display: block;
+        }
+        /* Hide RSS link text, keep icon */
+        .rss-link-text {
+          display: none;
+        }
+      }
 
       main {
         max-width: var(--max-width);
@@ -453,7 +690,7 @@ const isAdmin = Astro.locals.isAdmin ?? false;
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
               <path d="M6.18 15.64a2.18 2.18 0 0 1 2.18 2.18C8.36 19.01 7.38 20 6.18 20 4.98 20 4 19.01 4 17.82a2.18 2.18 0 0 1 2.18-2.18M4 4.44A15.56 15.56 0 0 1 19.56 20h-2.83A12.73 12.73 0 0 0 4 7.27V4.44m0 5.66a9.9 9.9 0 0 1 9.9 9.9h-2.83A7.07 7.07 0 0 0 4 12.93V10.1z"/>
             </svg>
-            RSS
+            <span class="rss-link-text">RSS</span>
           </a>
           {effectiveShowLanguageSwitcher && (
             <LanguageSwitcher currentLang={lang} alternateHref={alternateLangHref} />
@@ -493,8 +730,97 @@ const isAdmin = Astro.locals.isAdmin ?? false;
             </a>
           )}
         </div>
+
+        {/* Hamburger button — visible on mobile only (CSS controls display) */}
+        <button
+          id="hamburger-btn"
+          class="hamburger-btn"
+          aria-label={lang === "en" ? "Open menu" : "メニューを開く"}
+          aria-expanded="false"
+          aria-controls="drawer-panel"
+        >
+          <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="3" y1="6" x2="21" y2="6"/>
+            <line x1="3" y1="12" x2="21" y2="12"/>
+            <line x1="3" y1="18" x2="21" y2="18"/>
+          </svg>
+        </button>
       </div>
     </header>
+
+    {/* Drawer overlay (backdrop) */}
+    <div id="drawer-overlay" class="drawer-overlay" aria-hidden="true"></div>
+
+    {/* Drawer panel — slides in from the right on mobile */}
+    <div
+      id="drawer-panel"
+      class="drawer-panel"
+      role="dialog"
+      aria-modal="true"
+      aria-label={lang === "en" ? "Navigation menu" : "ナビゲーションメニュー"}
+    >
+      <div class="drawer-header">
+        <a href={lang === "ja" ? "/" : "/en"} class="brand-link" tabindex="-1">
+          <img src="/logo.png" alt="RAGtimeZ" class="drawer-brand" />
+        </a>
+        <button
+          id="drawer-close-btn"
+          class="drawer-close-btn"
+          aria-label={lang === "en" ? "Close menu" : "メニューを閉じる"}
+        >
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+            <line x1="18" y1="6" x2="6" y2="18"/>
+            <line x1="6" y1="6" x2="18" y2="18"/>
+          </svg>
+        </button>
+      </div>
+
+      <nav class="drawer-nav">
+        {user ? (
+          <>
+            <a href={`/profile/${user.login}`} class="drawer-user-profile">
+              <img
+                src={user.avatarUrl}
+                alt={user.login}
+                class="user-avatar"
+                width="32"
+                height="32"
+              />
+              <span class="drawer-user-login">{user.login}</span>
+            </a>
+            <div class="drawer-divider"></div>
+            <a href="/bookmarks" class="drawer-nav-item">
+              <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+              </svg>
+              {lang === "en" ? "Bookmarks" : "ブックマーク"}
+            </a>
+            {isAdmin && (
+              <a href="/admin/quality" class="drawer-admin-link">
+                <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/>
+                </svg>
+                {lang === "en" ? "Admin" : "管理"}
+              </a>
+            )}
+            <div class="drawer-divider"></div>
+            <form method="POST" action="/api/auth/logout" class="drawer-logout-form">
+              <button type="submit" class="drawer-logout-btn">
+                {lang === "en" ? "Logout" : "ログアウト"}
+              </button>
+            </form>
+          </>
+        ) : (
+          <a href={`/api/auth/login?redirect=${encodeURIComponent(Astro.url.pathname)}`} class="drawer-login-btn">
+            <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
+              <path d="M12 0c-6.626 0-12 5.373-12 12 0 5.302 3.438 9.8 8.207 11.387.599.111.793-.261.793-.577v-2.234c-3.338.726-4.033-1.416-4.033-1.416-.546-1.387-1.333-1.756-1.333-1.756-1.089-.745.083-.729.083-.729 1.205.084 1.839 1.237 1.839 1.237 1.07 1.834 2.807 1.304 3.492.997.107-.775.418-1.305.762-1.604-2.665-.305-5.467-1.334-5.467-5.931 0-1.311.469-2.381 1.236-3.221-.124-.303-.535-1.524.117-3.176 0 0 1.008-.322 3.301 1.23.957-.266 1.983-.399 3.003-.404 1.02.005 2.047.138 3.006.404 2.291-1.552 3.297-1.23 3.297-1.23.653 1.653.242 2.874.118 3.176.77.84 1.235 1.911 1.235 3.221 0 4.609-2.807 5.624-5.479 5.921.43.372.823 1.102.823 2.222v3.293c0 .319.192.694.801.576 4.765-1.589 8.199-6.086 8.199-11.386 0-6.627-5.373-12-12-12z"/>
+            </svg>
+            {lang === "en" ? "Login with GitHub" : "GitHubでログイン"}
+          </a>
+        )}
+      </nav>
+    </div>
+
     <main>
       <slot />
     </main>
@@ -522,5 +848,50 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         </div>
       </div>
     </footer>
+
+    <script>
+      // Hamburger drawer: open/close logic
+      (function () {
+        const hamburgerBtn = document.getElementById('hamburger-btn');
+        const drawerOverlay = document.getElementById('drawer-overlay');
+        const drawerPanel = document.getElementById('drawer-panel');
+        const drawerCloseBtn = document.getElementById('drawer-close-btn');
+
+        if (!hamburgerBtn || !drawerOverlay || !drawerPanel || !drawerCloseBtn) return;
+
+        function openDrawer(): void {
+          drawerOverlay!.classList.add('is-open');
+          drawerPanel!.classList.add('is-open');
+          hamburgerBtn!.setAttribute('aria-expanded', 'true');
+          drawerPanel!.removeAttribute('aria-hidden');
+          // Move focus to close button for accessibility
+          drawerCloseBtn!.focus();
+        }
+
+        function closeDrawer(): void {
+          drawerOverlay!.classList.remove('is-open');
+          drawerPanel!.classList.remove('is-open');
+          hamburgerBtn!.setAttribute('aria-expanded', 'false');
+          drawerPanel!.setAttribute('aria-hidden', 'true');
+          hamburgerBtn!.focus();
+        }
+
+        // Initialize with drawer hidden
+        drawerPanel.setAttribute('aria-hidden', 'true');
+
+        hamburgerBtn.addEventListener('click', openDrawer);
+        drawerCloseBtn.addEventListener('click', closeDrawer);
+
+        // Close on overlay click
+        drawerOverlay.addEventListener('click', closeDrawer);
+
+        // Close on ESC key
+        document.addEventListener('keydown', (e: KeyboardEvent) => {
+          if (e.key === 'Escape' && drawerPanel!.classList.contains('is-open')) {
+            closeDrawer();
+          }
+        });
+      })();
+    </script>
   </body>
 </html>
