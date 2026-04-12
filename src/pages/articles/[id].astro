@@ -1437,7 +1437,7 @@ if (user && env.DB) {
           });
         }
 
-        if (!response.ok && response.status !== 204) {
+        if (!response.ok) {
           // Revert on error
           applyBookmarkState(bookmarkBtn, isCurrentlyBookmarked);
           console.error("[bookmark] API error", response.status);

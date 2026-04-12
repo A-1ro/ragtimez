@@ -3,7 +3,7 @@
  *
  * All functions accept a D1Database instance directly, keeping the
  * dependency on Cloudflare bindings outside this module (callers obtain
- * `env.DB` via `Astro.locals.runtime.env` or `cloudflare:workers`).
+ * `env.DB` via `import { env } from "cloudflare:workers"`).
  */
 
 export interface Bookmark {
@@ -40,13 +40,12 @@ export async function addBookmark(
   githubId: string,
   slug: string
 ): Promise<void> {
-  const now = new Date().toISOString();
   await db
     .prepare(
-      `INSERT OR IGNORE INTO bookmarks (user_github_id, article_slug, created_at)
-       VALUES (?, ?, ?)`
+      `INSERT OR IGNORE INTO bookmarks (user_github_id, article_slug)
+       VALUES (?, ?)`
     )
-    .bind(githubId, slug, now)
+    .bind(githubId, slug)
     .run();
 }
 

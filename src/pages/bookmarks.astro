@@ -34,7 +34,7 @@ if (env.DB) {
 // Slugs that no longer correspond to a published article are silently dropped.
 const allArticles = await getCollection(
   "articles",
-  ({ data }) => !data.draft && data.lang === "ja"
+  ({ data }) => !data.draft
 );
 
 const bookmarkedArticles = bookmarkedSlugs

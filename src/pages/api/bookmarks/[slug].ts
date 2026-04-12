@@ -44,6 +44,13 @@ export const DELETE: APIRoute = async ({ request, params, locals }) => {
     );
   }
 
+  if (slug.length > 200) {
+    return new Response(
+      JSON.stringify({ error: t(lang, "bookmarkErrSlugTooLong") }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   try {
     await removeBookmark(env.DB, locals.user.githubId, slug);
     return new Response(null, { status: 204 });
