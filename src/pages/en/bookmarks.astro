@@ -1,7 +1,7 @@
 ---
 import { getCollection } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
-import { trustLabelMap } from "../../constants/trustLevels";
+import { getTrustLabel, getTrustColor } from "../../constants/trustLevels";
 import { formatDate } from "../../utils/date";
 import { getBookmarks } from "../../lib/bookmarks";
 import { env } from "cloudflare:workers";
@@ -66,19 +66,20 @@ const bookmarkedArticles = bookmarkedSlugs
   ) : (
     <section class="article-list" aria-label={t(lang, "bookmarksArticleList")}>
       {bookmarkedArticles.map((article) => {
-        const trust = trustLabelMap[article.data.trustLevel];
+        const trustColor = getTrustColor(article.data.trustLevel);
+        const trustLabel = getTrustLabel(article.data.trustLevel, lang);
         return (
           <article class="card">
             <a href={`/en/articles/${article.id}`} class="card-link">
               <div class="card-top">
                 <time datetime={article.data.date.toISOString()} class="card-date">
-                  {formatDate(article.data.date)}
+                  {formatDate(article.data.date, lang)}
                 </time>
                 <span
                   class="trust-badge"
-                  style={`background-color: ${trust.color}22; color: ${trust.color}; border-color: ${trust.color}44;`}
+                  style={`background-color: ${trustColor}22; color: ${trustColor}; border-color: ${trustColor}44;`}
                 >
-                  {trust.label}
+                  {trustLabel}
                 </span>
               </div>
               <h2 class="card-title">{article.data.title}</h2>
