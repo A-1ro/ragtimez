@@ -5,6 +5,7 @@ import {
   listSubscribers,
   generateArticleEmailHtml,
   sendEmailViaResend,
+  maskEmail,
 } from "../../../lib/newsletter";
 
 interface SendNewsletterRequest {
@@ -156,8 +157,9 @@ export const POST: APIRoute = async ({ request }) => {
           sent.push(subscriber.email);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
+          // Mask email address in error responses to avoid leaking PII in API responses/logs.
           failed.push({
-            email: subscriber.email,
+            email: maskEmail(subscriber.email),
             error: message,
           });
         }

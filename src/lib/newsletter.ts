@@ -32,6 +32,31 @@ export interface Subscriber {
 }
 
 /**
+ * Mask an email address for safe logging (e.g. test@example.com → te***@e*****.com).
+ * Format: first 2 chars + *** + @ + first 1 char of domain + ***** + . + TLD
+ */
+export function maskEmail(email: string): string {
+  const atIndex = email.lastIndexOf("@");
+  if (atIndex < 0) return "***";
+
+  const local = email.slice(0, atIndex);
+  const domain = email.slice(atIndex + 1);
+
+  const maskedLocal = local.slice(0, 2) + "***";
+
+  const dotIndex = domain.lastIndexOf(".");
+  if (dotIndex < 0) {
+    return `${maskedLocal}@${domain.slice(0, 1)}*****`;
+  }
+
+  const domainName = domain.slice(0, dotIndex);
+  const tld = domain.slice(dotIndex + 1);
+  const maskedDomain = domainName.slice(0, 1) + "*****";
+
+  return `${maskedLocal}@${maskedDomain}.${tld}`;
+}
+
+/**
  * Simple RFC5322-like email validation.
  * Rejects obviously invalid formats but is not a complete RFC implementation.
  */
@@ -59,19 +84,31 @@ function normalizeEmail(email: string): string {
 }
 
 /**
+ * Result returned by subscribeEmail.
+ */
+export interface SubscribeResult {
+  subscriber: Subscriber;
+  isNew: boolean;
+}
+
+/**
  * Subscribe an email address to the newsletter.
- * Returns the newly created subscriber.
- * If the email is already subscribed, returns success silently (to prevent email enumeration).
+ * Returns the subscriber and whether it was newly created.
+ * If the email is already subscribed, returns the existing subscriber with isNew: false
+ * to prevent confirmation email re-sends (and to prevent email enumeration in errors).
+ *
+ * KV write order: sub: key first, then tok: key.
+ * If the tok: write fails, the sub: key is rolled back to keep the two lookups consistent.
  *
  * @param kv KV namespace for subscribers
  * @param email Email address to subscribe
- * @returns The created or existing subscriber
+ * @returns SubscribeResult with the created or existing subscriber and isNew flag
  * @throws Error if email validation fails or KV operation fails
  */
 export async function subscribeEmail(
   kv: KVNamespace,
   email: string
-): Promise<Subscriber> {
+): Promise<SubscribeResult> {
   const normalized = normalizeEmail(email);
 
   if (!isValidEmail(normalized)) {
@@ -84,7 +121,7 @@ export async function subscribeEmail(
   // Check if email is already subscribed (constant-time to prevent enumeration).
   const existing = await kv.get(existingKey);
   if (existing) {
-    return JSON.parse(existing) as Subscriber;
+    return { subscriber: JSON.parse(existing) as Subscriber, isNew: false };
   }
 
   // Generate unsubscribe token.
@@ -96,17 +133,40 @@ export async function subscribeEmail(
     subscribedAt: new Date().toISOString(),
   };
 
-  // Store in KV with both lookups: email→subscriber and token→email.
-  await Promise.all([
-    kv.put(existingKey, JSON.stringify(subscriber), {
-      expirationTtl: 365 * 24 * 60 * 60, // 1 year
-    }),
-    kv.put(`tok:${token}`, normalized, {
-      expirationTtl: 365 * 24 * 60 * 60, // 1 year
-    }),
-  ]);
+  const ttl = { expirationTtl: 365 * 24 * 60 * 60 }; // 1 year
 
-  return subscriber;
+  // Write sub: key first, then tok: key sequentially.
+  // If tok: write fails, roll back the sub: key to keep lookups consistent.
+  await kv.put(existingKey, JSON.stringify(subscriber), {
+    ...ttl,
+    // Embed subscriber data as metadata so listSubscribers can avoid kv.get() per-entry.
+    metadata: {
+      email: subscriber.email,
+      token: subscriber.token,
+      subscribedAt: subscriber.subscribedAt,
+    } satisfies Subscriber,
+  });
+
+  try {
+    await kv.put(`tok:${token}`, normalized, ttl);
+  } catch (err) {
+    // Roll back the sub: key to avoid a dangling subscriber with no token lookup.
+    console.error(
+      `[newsletter] tok: write failed for ${maskEmail(normalized)}, rolling back sub: key`,
+      err
+    );
+    try {
+      await kv.delete(existingKey);
+    } catch (rollbackErr) {
+      console.error(
+        `[newsletter] Rollback of sub: key also failed for ${maskEmail(normalized)}`,
+        rollbackErr
+      );
+    }
+    throw err;
+  }
+
+  return { subscriber, isNew: true };
 }
 
 /**
@@ -140,6 +200,9 @@ export async function unsubscribeByToken(
 /**
  * Retrieve all subscribers from KV.
  *
+ * Prefers KV list metadata (written by subscribeEmail) to avoid one kv.get() per subscriber.
+ * Falls back to kv.get() for legacy entries that predate metadata storage.
+ *
  * @param kv KV namespace for subscribers
  * @returns Array of all subscribers
  */
@@ -149,15 +212,28 @@ export async function listSubscribers(kv: KVNamespace): Promise<Subscriber[]> {
 
   // KV.list() returns paginated results; iterate through all pages.
   do {
-    const result = await kv.list({ prefix: "sub:", cursor });
+    // Request metadata so we can skip individual kv.get() calls for modern entries.
+    const result = await kv.list<Subscriber>({ prefix: "sub:", cursor });
     for (const item of result.keys) {
-      const data = await kv.get(item.name);
-      if (data) {
-        try {
+      // Use metadata if present (new entries written by subscribeEmail).
+      if (
+        item.metadata &&
+        typeof item.metadata.email === "string" &&
+        typeof item.metadata.token === "string" &&
+        typeof item.metadata.subscribedAt === "string"
+      ) {
+        subscribers.push(item.metadata);
+        continue;
+      }
+
+      // Fallback: fetch value for legacy entries without metadata.
+      try {
+        const data = await kv.get(item.name);
+        if (data) {
           subscribers.push(JSON.parse(data) as Subscriber);
-        } catch {
-          // Skip malformed entries.
         }
+      } catch {
+        // Skip malformed entries.
       }
     }
     cursor = result.list_complete ? undefined : result.cursor;
@@ -209,6 +285,9 @@ export async function sendEmailViaResend(
 export function generateConfirmationEmailHtml(
   unsubscribeUrl: string
 ): string {
+  // Escape URL to prevent XSS — mirrors the same pattern used in generateArticleEmailHtml.
+  const escapedUnsubscribeUrl = escapeHtml(unsubscribeUrl);
+
   return `
 <!DOCTYPE html>
 <html>
@@ -235,7 +314,7 @@ export function generateConfirmationEmailHtml(
     </div>
     <div class="unsubscribe">
       <p style="margin: 0; font-size: 0.875rem; color: #666;">
-        配信を停止したい場合は、<a href="${unsubscribeUrl}">こちら</a>から購読を解除できます。
+        配信を停止したい場合は、<a href="${escapedUnsubscribeUrl}">こちら</a>から購読を解除できます。
       </p>
     </div>
     <div class="footer">
