@@ -5,10 +5,12 @@ import { trustLabelMap } from "../constants/trustLevels";
 import { formatDate } from "../utils/date";
 import { getBookmarks } from "../lib/bookmarks";
 import { env } from "cloudflare:workers";
+import { getLangFromPath, t } from "../lib/i18n";
 
 // SSR: rendered per-request so we can gate on session
 export const prerender = false;
 
+const lang = getLangFromPath(Astro.url.pathname);
 const user = Astro.locals.user;
 
 // Redirect unauthenticated visitors to GitHub login
@@ -42,15 +44,15 @@ const bookmarkedArticles = bookmarkedSlugs
   .filter((a): a is NonNullable<typeof a> => a !== undefined);
 ---
 
-<BaseLayout title="ブックマーク | RAGtimeZ" lang="ja" alternateLangHref={null}>
+<BaseLayout title={`${t(lang, "bookmarksPageTitle")} | RAGtimeZ`} lang={lang} alternateLangHref={null}>
   <section class="bookmarks-header">
     <h1 class="page-title">
       <svg class="page-icon" width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
       </svg>
-      ブックマーク
+      {t(lang, "bookmarksPageTitle")}
     </h1>
-    <p class="page-subtitle">{bookmarkedArticles.length} 件の記事をブックマーク中</p>
+    <p class="page-subtitle">{bookmarkedArticles.length} {t(lang, "bookmarksCount")}</p>
   </section>
 
   {bookmarkedArticles.length === 0 ? (
@@ -58,11 +60,11 @@ const bookmarkedArticles = bookmarkedSlugs
       <svg class="empty-icon" width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
         <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
       </svg>
-      <p>ブックマークした記事はまだありません。</p>
-      <a href="/" class="browse-link">記事を読む</a>
+      <p>{t(lang, "bookmarksEmpty")}</p>
+      <a href="/" class="browse-link">{t(lang, "bookmarksBrowse")}</a>
     </div>
   ) : (
-    <section class="article-list" aria-label="ブックマーク記事一覧">
+    <section class="article-list" aria-label={t(lang, "bookmarksArticleList")}>
       {bookmarkedArticles.map((article) => {
         const trust = trustLabelMap[article.data.trustLevel];
         return (
