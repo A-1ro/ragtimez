@@ -84,6 +84,45 @@ interface TavilyUsageBudget {
 }
 
 // ---------------------------------------------------------------------------
+// Security: prompt injection sanitization
+// ---------------------------------------------------------------------------
+
+/**
+ * RSSエントリタイトルの最大文字数
+ */
+const MAX_TITLE_LENGTH = 200;
+
+/**
+ * RSSエントリ要約の最大文字数
+ */
+const MAX_SUMMARY_LENGTH = 1000;
+
+/**
+ * 外部取得テキストからプロンプトインジェクション風パターンを除去する。
+ * RSSタイトル/要約や Tavily 本文など、LLM プロンプトの user ロールに
+ * 挿入される全テキストに適用する。
+ */
+function sanitizeExternalContent(text: string): string {
+  // 1. コントロール風プレフィックスを行頭から除去
+  //    - "SYSTEM:", "INSTRUCTION:", "IGNORE", "OVERRIDE", "ASSISTANT:", "USER:", "ADMIN:" 等
+  const controlPrefixPattern =
+    /^(SYSTEM|INSTRUCTION|IGNORE|OVERRIDE|ASSISTANT|USER|ADMIN|PROMPT|COMMAND|EXECUTE|FORGET|DISREGARD)\s*[:：]/gim;
+  let sanitized = text.replace(controlPrefixPattern, "[REMOVED]:");
+
+  // 2. "Ignore previous instructions" や "Ignore all instructions" 等のパターンを無力化
+  const ignorePattern =
+    /\b(ignore|disregard|forget|override|bypass)\s+(all\s+)?(previous|above|prior|earlier|preceding|system|initial)\s+(instructions?|prompts?|rules?|context|guidelines?|constraints?)/gi;
+  sanitized = sanitized.replace(ignorePattern, "[REMOVED]");
+
+  // 3. "You are now..." や "Act as..." といったロール変更の試みを無力化
+  const roleChangePattern =
+    /\b(you\s+are\s+now|from\s+now\s+on|act\s+as|pretend\s+(to\s+be|you\s+are)|you\s+must\s+now|switch\s+to|new\s+role|change\s+your\s+role)\b/gi;
+  sanitized = sanitized.replace(roleChangePattern, "[REMOVED]");
+
+  return sanitized;
+}
+
+// ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
 
@@ -251,12 +290,16 @@ function buildContext(
 ): string {
   return entries
     .map((e, i) => {
+      const title = sanitizeExternalContent(e.title).slice(0, MAX_TITLE_LENGTH);
       const fullText = fullTextMap?.get(e.link);
       const body = fullText
-        ? fullText.slice(0, TAVILY_CONTENT_MAX_CHARS)
-        : (e.summary ? e.summary.trim() : "(no summary)");
+        ? sanitizeExternalContent(fullText).slice(0, TAVILY_CONTENT_MAX_CHARS)
+        : sanitizeExternalContent(e.summary ? e.summary.trim() : "(no summary)").slice(
+            0,
+            MAX_SUMMARY_LENGTH,
+          );
       const bodyLabel = fullText ? "Full content (truncated)" : "Summary";
-      return `[${i + 1}] Source: ${e.link}\nTitle: ${e.title}\n${bodyLabel}: ${body}`;
+      return `[${i + 1}] Source: ${e.link}\nTitle: ${title}\n${bodyLabel}: ${body}`;
     })
     .join("\n\n---\n\n");
 }
@@ -283,7 +326,7 @@ function buildTavilyQueries(entries: RssEntry[], date: string): string[] {
   for (const entry of latestBySource.values()) {
     if (queries.length >= 3) break;
 
-    const title = entry.title.trim();
+    const title = sanitizeExternalContent(entry.title).slice(0, MAX_TITLE_LENGTH);
     if (title.length === 0) continue;
 
     // タイトルが短すぎる（20文字未満）場合は年号を付加して検索精度を補強する
@@ -358,7 +401,10 @@ function buildFullTextMap(
     if (!result.raw_content) continue;
 
     const remaining = TAVILY_CONTEXT_MAX_TOTAL_CHARS - totalChars;
-    const trimmed = result.raw_content.slice(0, Math.min(TAVILY_CONTENT_MAX_CHARS, remaining));
+    const trimmed = sanitizeExternalContent(result.raw_content).slice(
+      0,
+      Math.min(TAVILY_CONTENT_MAX_CHARS, remaining),
+    );
     map.set(result.url, trimmed);
     totalChars += trimmed.length;
   }
@@ -442,7 +488,7 @@ async function generateWithLLM(
         pastArticles
           .map(
             (a) =>
-              `- [${a.date}] ${a.title}${a.tags.length > 0 ? ` (tags: ${a.tags.join(", ")})` : ""}`,
+              `- [${a.date}] ${sanitizeExternalContent(a.title).slice(0, MAX_TITLE_LENGTH)}${a.tags.length > 0 ? ` (tags: ${a.tags.join(", ")})` : ""}`,
           )
           .join("\n") +
         "\n\n---\n\nNews items to choose from:\n\n"
@@ -490,7 +536,17 @@ async function generateWithLLM(
 
   let topicSelection: TopicSelection;
   try {
-    topicSelection = JSON.parse(topicSelectionRaw);
+    const parsed = JSON.parse(topicSelectionRaw);
+    // スキーマバリデーション: 必須フィールドの型チェック
+    if (
+      typeof parsed.topic !== "string" ||
+      typeof parsed.reason !== "string" ||
+      !Array.isArray(parsed.indices) ||
+      !parsed.indices.every((idx: unknown) => typeof idx === "number")
+    ) {
+      throw new Error("Schema validation failed");
+    }
+    topicSelection = parsed as TopicSelection;
   } catch {
     // Fallback: if parsing fails, use all entries and extract indices from raw text
     console.warn(`Topic selection parse failed, using fallback. Raw: ${topicSelectionRaw.slice(0, 200)}`);
@@ -527,7 +583,7 @@ async function generateWithLLM(
       );
     } else {
       try {
-        const additionalQuery = topicSelection.topic;
+        const additionalQuery = sanitizeExternalContent(topicSelection.topic).slice(0, MAX_TITLE_LENGTH);
         console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery.slice(0, 200)}"`);
 
         const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
@@ -574,7 +630,7 @@ async function generateWithLLM(
                 if (!result.raw_content) continue;
 
                 const remaining = TAVILY_CONTEXT_MAX_TOTAL_CHARS - totalChars;
-                const trimmed = result.raw_content.slice(
+                const trimmed = sanitizeExternalContent(result.raw_content).slice(
                   0,
                   Math.min(TAVILY_CONTENT_MAX_CHARS, remaining),
                 );
@@ -649,7 +705,22 @@ async function generateWithLLM(
 
   let meta: { title: string; summary: string; tags: string[] };
   try {
-    meta = JSON.parse(metaRaw);
+    const parsed = JSON.parse(metaRaw);
+    // スキーマバリデーション: 必須フィールドの型チェック
+    if (
+      typeof parsed.title !== "string" ||
+      typeof parsed.summary !== "string" ||
+      !Array.isArray(parsed.tags) ||
+      !parsed.tags.every((t: unknown) => typeof t === "string")
+    ) {
+      throw new Error("Schema validation failed");
+    }
+    // 出力サニタイズ: タイトル/サマリー/タグの長さ制限
+    meta = {
+      title: parsed.title.slice(0, 200),
+      summary: parsed.summary.slice(0, 500),
+      tags: (parsed.tags as string[]).slice(0, 10).map((t) => t.slice(0, 50)),
+    };
   } catch {
     // Model sometimes emits malformed JSON (unclosed strings).
     // Extract fields with regex as fallback.
@@ -660,10 +731,12 @@ async function generateWithLLM(
       throw new Error(`Metadata parse failed. Raw: ${metaRaw.slice(0, 300)}`);
     }
     meta = {
-      title: titleM[1].trim(),
-      summary: summaryM[1].replace(/,\s*$/, "").trim(),
+      title: titleM[1].trim().slice(0, 200),
+      summary: summaryM[1].replace(/,\s*$/, "").trim().slice(0, 500),
       tags: tagsM
-        ? (tagsM[1].match(/"([^"]+)"/g) ?? []).map((s) => s.replace(/"/g, ""))
+        ? (tagsM[1].match(/"([^"]+)"/g) ?? [])
+            .map((s) => s.replace(/"/g, "").slice(0, 50))
+            .slice(0, 10)
         : [],
     };
   }
