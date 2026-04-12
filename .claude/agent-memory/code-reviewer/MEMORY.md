@@ -4,3 +4,4 @@
 - [Admin Session Auth Pattern (PR #52)](pattern_admin_session_auth.md) — Bearer + GitHub OAuth 二経路認証パターンと ADMIN_GITHUB_IDS 未設定時のエッジケース
 - [Bluesky Error Response Sanitization (PR #56)](pattern_bluesky_error_handling.md) — 外部APIのエラーメッセージをそのままレスポンスに返さない; console.errorでサーバーサイドログに留める
 - [hreflang x-default cross-lang article pages](pattern_hreflang_xdefault.md) — localizePath では en 記事URLの x-default を正しく計算できない; 解決済み ja URL を使うこと
+- [D1 DB Binding Access Pattern](pattern_d1_binding_access.md) — env.DB は cloudflare:workers から取得; !env.DB ガード必須; FK は宣言のみで未enforced
