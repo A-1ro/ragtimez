@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import { getContributorRank } from "../../../lib/contributorBadge";
 import { validateProfileUrl } from "../../../lib/profileUrls";
+import { verifyCsrf } from "../../../lib/csrf";
 
 /** Maximum bio length in characters. */
 const MAX_BIO_LENGTH = 500;
@@ -34,6 +35,13 @@ export const PATCH: APIRoute = async ({ request, locals }) => {
     return new Response(
       JSON.stringify({ error: "Unauthorized: authentication required" }),
       { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!verifyCsrf(request)) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden: CSRF validation failed" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
     );
   }
 

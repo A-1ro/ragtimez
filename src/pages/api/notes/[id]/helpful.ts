@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import { getLangFromRequest, t } from "../../../../lib/i18n";
+import { verifyCsrf } from "../../../../lib/csrf";
 
 /**
  * Helper: fetch the current helpful_count for a note after a mutation.
@@ -40,6 +41,13 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
     return new Response(
       JSON.stringify({ error: t(lang, "noteErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!verifyCsrf(request)) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden: CSRF validation failed" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
     );
   }
 
@@ -122,6 +130,13 @@ export const DELETE: APIRoute = async ({ request, params, locals }) => {
     return new Response(
       JSON.stringify({ error: t(lang, "noteErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!verifyCsrf(request)) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden: CSRF validation failed" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
     );
   }
 

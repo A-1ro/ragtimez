@@ -1,6 +1,7 @@
 import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import { getSessionId, deleteSession, buildClearCookie } from "../../../lib/session";
+import { verifyCsrf } from "../../../lib/csrf";
 
 /**
  * POST /api/auth/logout
@@ -15,6 +16,13 @@ import { getSessionId, deleteSession, buildClearCookie } from "../../../lib/sess
  * an attacker embedding a hidden image or link (CSRF via logout).
  */
 export const POST: APIRoute = async ({ request }) => {
+  if (!verifyCsrf(request)) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden: CSRF validation failed" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const sessionId = getSessionId(request);
   if (sessionId && env.AUTH_KV) {
     await deleteSession(env.AUTH_KV, sessionId);
