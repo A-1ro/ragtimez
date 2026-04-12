@@ -1,17 +1,14 @@
 /**
  * Constant-time string comparison to prevent timing attacks when validating
- * secret tokens.  Iterates through all bytes of both strings regardless of
- * where the first mismatch occurs.
+ * secret tokens. Delegates to the Cloudflare Workers native
+ * crypto.subtle.timingSafeEqual which is guaranteed to run in constant time.
+ * A length pre-check is required because crypto.subtle.timingSafeEqual throws
+ * when the two ArrayBuffers have different byte lengths.
  */
 export function timingSafeEqual(a: string, b: string): boolean {
   const enc = new TextEncoder();
   const aBytes = enc.encode(a);
   const bBytes = enc.encode(b);
-  const maxLen = Math.max(aBytes.length, bBytes.length);
-  // XOR the lengths so that a length difference always produces a non-zero result.
-  let result = aBytes.length ^ bBytes.length;
-  for (let i = 0; i < maxLen; i++) {
-    result |= (aBytes[i] ?? 0) ^ (bBytes[i] ?? 0);
-  }
-  return result === 0;
+  if (aBytes.length !== bBytes.length) return false;
+  return crypto.subtle.timingSafeEqual(aBytes, bBytes);
 }
