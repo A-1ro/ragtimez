@@ -2,6 +2,7 @@ import type { APIRoute } from "astro";
 import { env } from "cloudflare:workers";
 import { getLangFromRequest, t } from "../../../lib/i18n";
 import { getBookmarks, addBookmark } from "../../../lib/bookmarks";
+import { verifyCsrf } from "../../../lib/csrf";
 
 /**
  * GET /api/bookmarks
@@ -71,6 +72,13 @@ export const POST: APIRoute = async ({ request, locals }) => {
     return new Response(
       JSON.stringify({ error: t(lang, "bookmarkErrUnauthorized") }),
       { status: 401, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
+  if (!verifyCsrf(request)) {
+    return new Response(
+      JSON.stringify({ error: "Forbidden: CSRF validation failed" }),
+      { status: 403, headers: { "Content-Type": "application/json" } }
     );
   }
 
