@@ -320,6 +320,26 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         text-decoration: none;
       }
 
+      /* Bookmarks nav link — shown for authenticated users */
+      .bookmarks-link {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        font-size: 0.8125rem;
+        font-weight: 500;
+        color: var(--color-muted);
+        text-decoration: none;
+        border-radius: 0.5rem;
+        padding: 0.3em 0.6em;
+        transition: color 0.2s, background 0.2s;
+        white-space: nowrap;
+      }
+      .bookmarks-link:hover {
+        color: var(--color-accent-soft);
+        background: rgba(61, 142, 245, 0.08);
+        text-decoration: none;
+      }
+
 
       main {
         max-width: var(--max-width);
@@ -442,6 +462,12 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         <div class="nav-auth">
           {user ? (
             <div class="user-info">
+              <a href="/bookmarks" class="bookmarks-link" aria-label="ブックマーク一覧を開く">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M19 21l-7-5-7 5V5a2 2 0 0 1 2-2h10a2 2 0 0 1 2 2z"/>
+                </svg>
+                {lang === "en" ? "Bookmarks" : "ブックマーク"}
+              </a>
               <a href={`/profile/${user.login}`} class="user-profile-link" aria-label="マイページを開く">
                 <img
                   src={user.avatarUrl}
