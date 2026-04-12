@@ -32,10 +32,12 @@ const RSS_LOOKBACK_DAYS = 7;
 const PAST_ARTICLES_LOOKBACK_DAYS = 14;
 
 /**
- * Tavily extract の対象とする URL の上限数。
+ * Tavily extract の対象とする URL の上限数（Step C で使用）。
  * 無料枠の節約のため、スコアの高い上位 N 件に絞る。
+ * Step 0.5 の extract 予算（最大3件）を確保するため 5 に設定する。
+ * 配分内訳: Step C 最大5件 + Step 0.5 最大3件 = 合計最大8件（= TAVILY_MAX_EXTRACT_URLS_TOTAL）。
  */
-const TAVILY_EXTRACT_MAX_URLS = 8;
+const TAVILY_EXTRACT_MAX_URLS = 5;
 
 /**
  * LLM コンテキストに組み込む際の、1 ソースあたりの本文最大文字数。
@@ -50,14 +52,17 @@ const TAVILY_CONTENT_MAX_CHARS = 2000;
 const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 40_000;
 
 /**
- * 1 回の /api/generate-article リクエスト全体で許容する Tavily /search 呼び出し回数の上限。
+ * 1 回の /api/generate-article リクエスト全体で許容する Tavily /search クエリ数（= API リクエスト数）の上限。
+ * tavilySearch() は各クエリを個別の HTTP リクエストとして発行するため、1 クエリ = 1 API リクエストとなる。
  * ルートハンドラ（Step A）と generateWithLLM（Step 0.5）を合算して管理する。
+ * 配分内訳: Step A 最大3クエリ + Step 0.5 最大1クエリ = 合計最大4クエリ。
  */
-const TAVILY_MAX_SEARCH_CALLS = 3;
+const TAVILY_MAX_SEARCH_CALLS = 4;
 
 /**
  * 1 回の /api/generate-article リクエスト全体で許容する Tavily /extract の対象 URL 数の上限。
  * ルートハンドラ（Step C）と generateWithLLM（Step 0.5）を合算して管理する。
+ * 配分内訳: Step C 最大5件（= TAVILY_EXTRACT_MAX_URLS）+ Step 0.5 最大3件 = 合計最大8件。
  */
 const TAVILY_MAX_EXTRACT_URLS_TOTAL = 8;
 
