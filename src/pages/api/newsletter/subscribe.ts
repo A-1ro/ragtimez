@@ -43,17 +43,23 @@ export const POST: APIRoute = async ({ request }) => {
   }
 
   // Rate limiting: 1 request per IP per 60 seconds.
+  // Skipped when CF-Connecting-IP is absent (e.g., local development).
   // Checked before CSRF validation to reduce processing cost for abusive requests.
-  const ip = request.headers.get("CF-Connecting-IP") ?? "unknown";
-  const rateKey = `rate:subscribe:${ip}`;
-  const recent = await env.SUBSCRIBERS_KV.get(rateKey);
-  if (recent) {
-    return new Response(
-      JSON.stringify({ error: "Too many requests. Please try again later." }),
-      { status: 429, headers: { "Content-Type": "application/json" } }
-    );
+  const ip = request.headers.get("CF-Connecting-IP");
+  if (ip) {
+    const rateKey = `rate:subscribe:${ip}`;
+    const recent = await env.SUBSCRIBERS_KV.get(rateKey);
+    if (recent) {
+      return new Response(
+        JSON.stringify({ error: "Too many requests. Please try again later." }),
+        {
+          status: 429,
+          headers: { "Content-Type": "application/json", "Retry-After": "60" },
+        }
+      );
+    }
+    await env.SUBSCRIBERS_KV.put(rateKey, "1", { expirationTtl: 60 });
   }
-  await env.SUBSCRIBERS_KV.put(rateKey, "1", { expirationTtl: 60 });
 
   // CSRF check: verify Origin matches SITE_URL.
   const origin = request.headers.get("Origin");
