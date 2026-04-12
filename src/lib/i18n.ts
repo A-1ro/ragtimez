@@ -44,6 +44,9 @@ export const translations: Record<Lang, Record<string, string>> = {
     bookmarkLoginPrompt: "ログインしてブックマーク",
     bookmarksPageTitle: "ブックマーク",
     bookmarksEmpty: "ブックマークした記事はまだありません。",
+    bookmarksBrowse: "記事を読む",
+    bookmarksCount: "件の記事をブックマーク中",
+    bookmarksArticleList: "ブックマーク記事一覧",
   },
   en: {
     siteTagline: "AI-powered daily tech blog",
@@ -85,6 +88,9 @@ export const translations: Record<Lang, Record<string, string>> = {
     bookmarkLoginPrompt: "Login to bookmark",
     bookmarksPageTitle: "Bookmarks",
     bookmarksEmpty: "You have no bookmarked articles yet.",
+    bookmarksBrowse: "Browse articles",
+    bookmarksCount: "bookmarked",
+    bookmarksArticleList: "Bookmarked articles",
   },
 };
 
