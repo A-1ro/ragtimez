@@ -569,6 +569,9 @@ const isAdmin = Astro.locals.isAdmin ?? false;
       @media (max-width: 768px) {
         .hamburger-btn {
           display: flex;
+          /* Touch target 44px: minimum touch target 44×44px */
+          width: 44px;
+          height: 44px;
         }
         .nav-auth {
           display: none;
@@ -579,6 +582,54 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         /* Hide RSS link text, keep icon */
         .rss-link-text {
           display: none;
+        }
+
+        /* Touch target 44px: RSS link — icon-only on mobile; ensure 44×44px touch area */
+        .rss-link {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          min-width: 44px;
+          min-height: 44px;
+        }
+
+        /* Touch target 44px: Drawer close button — expand from 36px to 44×44px */
+        .drawer-close-btn {
+          width: 44px;
+          height: 44px;
+        }
+
+        /* Touch target 44px: Drawer nav items — increase vertical padding for 44px touch height */
+        .drawer-nav-item {
+          min-height: 44px;
+          padding-top: 0.8rem;
+          padding-bottom: 0.8rem;
+        }
+
+        /* Touch target 44px: Drawer user profile link */
+        .drawer-user-profile {
+          min-height: 44px;
+          padding-top: 0.8rem;
+          padding-bottom: 0.8rem;
+        }
+
+        /* Touch target 44px: Drawer admin link */
+        .drawer-admin-link {
+          min-height: 44px;
+          padding-top: 0.8rem;
+          padding-bottom: 0.8rem;
+        }
+
+        /* Touch target 44px: Drawer logout button */
+        .drawer-logout-btn {
+          min-height: 44px;
+          padding-top: 0.8rem;
+          padding-bottom: 0.8rem;
+        }
+
+        /* Touch target 44px: Drawer login button */
+        .drawer-login-btn {
+          min-height: 44px;
         }
       }
 
