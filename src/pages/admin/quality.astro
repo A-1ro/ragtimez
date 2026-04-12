@@ -515,7 +515,7 @@ function officialRatioPct(officialCount: number, total: number): string {
     text-align: center;
   }
 
-  @media (max-width: 600px) {
+  @media (max-width: 768px) {
     .admin-page {
       padding: 1rem 0 3rem;
     }
@@ -525,6 +525,32 @@ function officialRatioPct(officialCount: number, total: number): string {
     .quality-table th,
     .quality-table td {
       padding: 0.6rem 0.75rem;
+    }
+
+    /* Bar chart tablet */
+    .bar-col {
+      min-width: 12px;
+    }
+    .bar-chart {
+      gap: 3px;
+      padding: 0.625rem 0.625rem 0;
+    }
+
+    /* Table tablet */
+    .hide-mobile {
+      display: none;
+    }
+    .title-col {
+      min-width: unset;
+    }
+    .quality-table {
+      font-size: 0.85rem;
+    }
+  }
+
+  @media (max-width: 600px) {
+    .stats-grid {
+      grid-template-columns: repeat(2, 1fr);
     }
 
     /* Bar chart mobile */
@@ -539,13 +565,6 @@ function officialRatioPct(officialCount: number, total: number): string {
       display: none;
     }
 
-    /* Table mobile */
-    .hide-mobile {
-      display: none;
-    }
-    .title-col {
-      min-width: unset;
-    }
     .quality-table {
       font-size: 0.8rem;
     }
