@@ -14,7 +14,6 @@ npm run build            # Astro production build → ./dist/
 npm run preview          # Preview production build locally
 
 # Utility Scripts
-npm run setup:ai-search  # Register crawl targets with Cloudflare AI Search
 npm run generate:article # Generate an article via LLM (calls the API endpoint)
 ```
 
@@ -26,13 +25,14 @@ RAGtimeZ is an AI-powered daily tech blog built on **Astro + Cloudflare Pages/Wo
 
 ```
 GitHub Actions (daily cron)
-  → POST /api/generate-article (Workers AI + AI Search)
+  → POST /api/fetch-rss (RSS → D1)
+  → POST /api/generate-article (D1 + Tavily → Workers AI)
   → Commits Markdown to src/content/articles/
   → Cloudflare Pages rebuilds & deploys static site
 
 User Browser
   → Static Astro pages (article list, article detail)
-  → /api/search (AI Search queries, Bearer token auth)
+  → /api/search (D1 rss_entries LIKE search, Bearer token auth)
   → /api/auth/* (GitHub OAuth → KV session storage)
 ```
 
@@ -41,7 +41,7 @@ User Browser
 | Binding | Type | Purpose |
 |---|---|---|
 | `AI` | `Ai` | Workers AI for LLM article generation |
-| `AI_SEARCH` | `AiSearchInstance` | Cloudflare AI Search index |
+| `DB` | `D1Database` | User profiles, community notes, and RSS entry storage |
 | `AUTH_KV` | `KVNamespace` | Session storage (GitHub OAuth) |
 | `INTERNAL_API_TOKEN` | `string` | Rate-limits `/api/search`, `/api/generate-article`, and `/api/newsletter/send` |
 | `GITHUB_CLIENT_ID/SECRET` | `string` | GitHub OAuth app credentials |
@@ -60,15 +60,26 @@ In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only wo
 
 - **`src/pages/api/`** — All API routes (Cloudflare Pages Functions)
   - `auth/{login,callback,logout}.ts` — GitHub OAuth flow with CSRF state via KV
-  - `search.ts` — AI Search query endpoint (timing-safe Bearer token auth)
-  - `generate-article.ts` — Article generation: queries AI Search → calls Workers AI LLM → writes Markdown
+  - `search.ts` — D1 `rss_entries` table LIKE search endpoint (timing-safe Bearer token auth)
+  - `generate-article.ts` — Article generation: queries D1 + Tavily → calls Workers AI LLM → writes Markdown
+  - `fetch-rss.ts` — RSS feed fetching: crawls targets → stores entries in D1
   - `newsletter/{subscribe,unsubscribe,send}.ts` — Newsletter subscription and delivery
   - `social/post-bluesky.ts` — Bluesky auto-posting endpoint (AT Protocol)
+  - `notes/{index,[id]}.ts` — Community notes CRUD
+  - `bookmarks/{index,[slug]}.ts` — Bookmark management
+  - `profile/{index,[username]}.ts` — User profile management
 - **`src/lib/`** — Shared server utilities
   - `auth.ts` — Timing-safe string comparison
   - `session.ts` — KV-backed session CRUD + CSRF state management
   - `newsletter.ts` — Newsletter subscription, Resend email, and HTML template utilities
   - `bluesky.ts` — Bluesky (AT Protocol) session and post creation utilities
+  - `admin.ts` — Admin role check utilities
+  - `bookmarks.ts` — Bookmark D1 query helpers
+  - `contributorBadge.ts` — Contributor badge rendering logic
+  - `i18n.ts` — Internationalization utilities
+  - `profileUrls.ts` — User profile URL helpers
+  - `quality.ts` — Article quality scoring utilities
+  - `tavily.ts` — Tavily API client for web search + full-text extraction
 - **`src/middleware.ts`** — Session loading on every request; attaches `user` to `Astro.locals`
 - **`src/content/articles/`** — Auto-generated Markdown files (committed by GitHub Actions bot)
 - **`src/constants/crawlTargets.ts`** — 10 sites crawled daily (Azure, OpenAI, Anthropic, etc.)
@@ -91,7 +102,7 @@ In wrangler.toml, KV is intentionally unconfigured locally — `AUTH_KV` only wo
 
 ### GitHub Actions
 
-- **`daily-article.yml`** — Runs at 21:00 UTC (06:00 JST). Calls `POST /api/generate-article`, commits any generated Markdown files as a bot, sends newsletter email to all subscribers, and posts to Bluesky. Requires secrets: `GENERATE_ARTICLE_URL`, `NEWSLETTER_SEND_URL`, `BLUESKY_POST_URL` (optional), `INTERNAL_API_TOKEN`.
+- **`daily-article.yml`** — Runs at 21:00 UTC (06:00 JST). First calls `POST /api/fetch-rss` to populate D1 with the latest RSS entries, then calls `POST /api/generate-article`, commits any generated Markdown files as a bot, sends newsletter email to all subscribers, and posts to Bluesky. Requires secrets: `GENERATE_ARTICLE_URL`, `FETCH_RSS_URL`, `NEWSLETTER_SEND_URL`, `BLUESKY_POST_URL` (optional), `INTERNAL_API_TOKEN`.
 - **`check-placeholders.yml`** — Blocks PRs containing `REPLACE_WITH_YOUR_*` strings in config files.
 
 ### Development Notes
