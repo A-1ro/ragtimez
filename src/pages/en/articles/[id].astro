@@ -1059,6 +1059,9 @@ const alternateLangHref: string | null = counterpart
       const data = (await response.json()) as { notes: Note[] };
       const notes = data.notes || [];
 
+      // Preserve scroll position so the viewport doesn't jump when re-rendering
+      // after a sort change.
+      const scrollTop = notesList.scrollTop;
       notesList.innerHTML = "";
 
       if (notes.length === 0) {
@@ -1072,6 +1075,7 @@ const alternateLangHref: string | null = counterpart
           notesList.appendChild(renderNote(note));
         });
       }
+      notesList.scrollTop = scrollTop;
     } catch (error) {
       console.error("Error loading notes:", error);
       notesList.innerHTML = '<div class="empty-state">Failed to load notes.</div>';
@@ -1085,6 +1089,9 @@ const alternateLangHref: string | null = counterpart
       alert("Sign in required. Please log in with GitHub.");
       return;
     }
+
+    // Prevent double-clicks while the request is in flight.
+    btn.disabled = true;
 
     const isVoted = btn.classList.contains("voted");
     const method = isVoted ? "DELETE" : "POST";
@@ -1128,6 +1135,8 @@ const alternateLangHref: string | null = counterpart
     } catch (error) {
       console.error("Error toggling helpful vote:", error);
       alert("Failed to process vote.");
+    } finally {
+      btn.disabled = false;
     }
   }
 
