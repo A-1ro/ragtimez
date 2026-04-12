@@ -326,7 +326,7 @@ function buildTavilyQueries(entries: RssEntry[], date: string): string[] {
   for (const entry of latestBySource.values()) {
     if (queries.length >= 3) break;
 
-    const title = entry.title.trim();
+    const title = sanitizeExternalContent(entry.title).slice(0, MAX_TITLE_LENGTH);
     if (title.length === 0) continue;
 
     // タイトルが短すぎる（20文字未満）場合は年号を付加して検索精度を補強する
@@ -583,7 +583,7 @@ async function generateWithLLM(
       );
     } else {
       try {
-        const additionalQuery = topicSelection.topic;
+        const additionalQuery = sanitizeExternalContent(topicSelection.topic).slice(0, MAX_TITLE_LENGTH);
         console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery.slice(0, 200)}"`);
 
         const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
