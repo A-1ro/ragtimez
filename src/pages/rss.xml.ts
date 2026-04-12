@@ -1,6 +1,7 @@
 import rss from "@astrojs/rss";
 import { getCollection } from "astro:content";
 import type { APIContext } from "astro";
+import { marked } from "marked";
 
 export async function GET(context: APIContext) {
   const articles = await getCollection("articles", ({ data }) => !data.draft && data.lang === "ja");
@@ -20,7 +21,7 @@ export async function GET(context: APIContext) {
       pubDate: article.data.date,
       description: article.data.summary,
       link: `/articles/${article.id}/`,
-      content: article.rendered?.html,
+      content: article.body ? marked.parse(article.body, { async: false }) as string : undefined,
     })),
     customData: `<language>ja</language>`,
   });
