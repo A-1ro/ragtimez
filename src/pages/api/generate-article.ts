@@ -49,6 +49,35 @@ const TAVILY_CONTENT_MAX_CHARS = 2000;
  */
 const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 40_000;
 
+/**
+ * 1 回の /api/generate-article リクエスト全体で許容する Tavily /search 呼び出し回数の上限。
+ * ルートハンドラ（Step A）と generateWithLLM（Step 0.5）を合算して管理する。
+ */
+const TAVILY_MAX_SEARCH_CALLS = 3;
+
+/**
+ * 1 回の /api/generate-article リクエスト全体で許容する Tavily /extract の対象 URL 数の上限。
+ * ルートハンドラ（Step C）と generateWithLLM（Step 0.5）を合算して管理する。
+ */
+const TAVILY_MAX_EXTRACT_URLS_TOTAL = 8;
+
+// ---------------------------------------------------------------------------
+// Tavily usage budget
+// ---------------------------------------------------------------------------
+
+/**
+ * Tavily API 呼び出し回数を追跡するオブジェクト。
+ * ルートハンドラで生成し generateWithLLM に渡すことで、
+ * Step A/C とStep 0.5 の消費量を一元管理する。
+ *
+ * searchCalls  : tavilySearch() を呼んだ回数（上限: TAVILY_MAX_SEARCH_CALLS）
+ * extractUrls  : tavilyExtract() に渡した URL の合計数（上限: TAVILY_MAX_EXTRACT_URLS_TOTAL）
+ */
+interface TavilyUsageBudget {
+  searchCalls: number;
+  extractUrls: number;
+}
+
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
@@ -372,6 +401,8 @@ interface TopicSelection {
  * @param lang           生成言語（"ja" | "en"）
  * @param fullTextMap    Tavily /extract で取得した URL→本文マップ（オプション）
  * @param tavilyApiKey   Tavily API キー（設定されている場合のみ追加検索を実行）
+ * @param tavilyBudget   Tavily API 呼び出し回数の予算トラッカー（オプション）
+ *                       渡された場合は Step 0.5 で残予算を確認してから呼び出しを行う
  */
 async function generateWithLLM(
   entries: RssEntry[],
@@ -380,6 +411,7 @@ async function generateWithLLM(
   lang: "ja" | "en" = "ja",
   fullTextMap?: Map<string, string>,
   tavilyApiKey?: string,
+  tavilyBudget?: TavilyUsageBudget,
 ): Promise<{
   title: string;
   summary: string;
@@ -476,57 +508,86 @@ async function generateWithLLM(
   // --- Step 0.5: トピック選定後の追加 Tavily 検索（オプション）---
   // tavilyApiKey が渡されている場合のみ実行。
   // 選定トピック（英語1文）をクエリとして追加検索し、fullTextMap を強化する。
+  // tavilyBudget が渡されている場合は残予算を確認してから呼び出しを行う。
   // 失敗時はそのまま続行（既存のフォールバック動作を維持）。
   if (tavilyApiKey && topicSelection.topic) {
-    try {
-      const additionalQuery = topicSelection.topic;
-      console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery.slice(0, 200)}"`);
+    // 予算チェック: search の残枠を確認
+    const searchBudgetRemaining = tavilyBudget
+      ? TAVILY_MAX_SEARCH_CALLS - tavilyBudget.searchCalls
+      : Infinity;
 
-      const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
-      console.log(`Tavily 追加検索結果: ${additionalSearchResults.length} 件`);
-
-      if (additionalSearchResults.length > 0) {
-        // 追加検索結果を selectedEntries にマージして buildContext で参照可能にする
-        selectedEntries = mergeWithTavilyResults(selectedEntries, additionalSearchResults);
-
-        // 追加検索結果から上位 3 件の URL を extract 対象とする（無料枠節約）
-        const additionalUrls = additionalSearchResults
-          .slice(0, 3)
-          .map((r) => r.url);
-
-        console.log(`Tavily 追加 extract: ${additionalUrls.length} URLs`);
-        const additionalExtractResults = await tavilyExtract(tavilyApiKey, additionalUrls);
-        console.log(`Tavily 追加 extract 結果: ${additionalExtractResults.length} 件`);
-
-        if (additionalExtractResults.length > 0) {
-          // 既存の fullTextMap に追加 extract 結果をマージする
-          // （既存エントリは上書きしない: 先着の RSS/初回 Tavily 結果を優先）
-          const currentMap = fullTextMap ?? new Map<string, string>();
-          let totalChars = [...currentMap.values()].reduce((acc, v) => acc + v.length, 0);
-
-          for (const result of additionalExtractResults) {
-            if (currentMap.has(result.url)) continue;
-            if (totalChars >= TAVILY_CONTEXT_MAX_TOTAL_CHARS) break;
-            if (!result.raw_content) continue;
-
-            const remaining = TAVILY_CONTEXT_MAX_TOTAL_CHARS - totalChars;
-            const trimmed = result.raw_content.slice(
-              0,
-              Math.min(TAVILY_CONTENT_MAX_CHARS, remaining),
-            );
-            currentMap.set(result.url, trimmed);
-            totalChars += trimmed.length;
-          }
-
-          fullTextMap = currentMap;
-          console.log(`fullTextMap 更新後エントリ数: ${fullTextMap.size}`);
-        }
-      }
-    } catch (err) {
-      // 追加検索失敗時は警告のみ出力して続行（既存コンテキストで生成）
-      console.warn(
-        `Tavily 追加検索失敗（続行）: ${err instanceof Error ? err.message : String(err)}`,
+    if (searchBudgetRemaining <= 0) {
+      console.log(
+        `Tavily 追加検索スキップ（予算上限到達: searchCalls=${tavilyBudget?.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}）`,
       );
+    } else {
+      try {
+        const additionalQuery = topicSelection.topic;
+        console.log(`Tavily 追加検索（トピックベース）: "${additionalQuery.slice(0, 200)}"`);
+
+        const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
+        // 消費した search 回数を記録
+        if (tavilyBudget) tavilyBudget.searchCalls += 1;
+        console.log(`Tavily 追加検索結果: ${additionalSearchResults.length} 件`);
+
+        if (additionalSearchResults.length > 0) {
+          // 追加検索結果を selectedEntries にマージして buildContext で参照可能にする
+          selectedEntries = mergeWithTavilyResults(selectedEntries, additionalSearchResults);
+          // マージ後も MAX_CONTEXT_ENTRIES 上限を維持する
+          selectedEntries = selectedEntries.slice(0, MAX_CONTEXT_ENTRIES);
+
+          // 予算チェック: extract の残枠を確認
+          const extractBudgetRemaining = tavilyBudget
+            ? TAVILY_MAX_EXTRACT_URLS_TOTAL - tavilyBudget.extractUrls
+            : Infinity;
+
+          if (extractBudgetRemaining <= 0) {
+            console.log(
+              `Tavily 追加 extract スキップ（予算上限到達: extractUrls=${tavilyBudget?.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}）`,
+            );
+          } else {
+            // 追加検索結果から extract 残予算内で上位 URL を取得（上限 3 件かつ残枠以内）
+            const additionalUrls = additionalSearchResults
+              .slice(0, Math.min(3, extractBudgetRemaining))
+              .map((r) => r.url);
+
+            console.log(`Tavily 追加 extract: ${additionalUrls.length} URLs`);
+            const additionalExtractResults = await tavilyExtract(tavilyApiKey, additionalUrls);
+            // 消費した extract URL 数を記録
+            if (tavilyBudget) tavilyBudget.extractUrls += additionalUrls.length;
+            console.log(`Tavily 追加 extract 結果: ${additionalExtractResults.length} 件`);
+
+            if (additionalExtractResults.length > 0) {
+              // 既存の fullTextMap に追加 extract 結果をマージする
+              // （既存エントリは上書きしない: 先着の RSS/初回 Tavily 結果を優先）
+              const currentMap = fullTextMap ?? new Map<string, string>();
+              let totalChars = [...currentMap.values()].reduce((acc, v) => acc + v.length, 0);
+
+              for (const result of additionalExtractResults) {
+                if (currentMap.has(result.url)) continue;
+                if (totalChars >= TAVILY_CONTEXT_MAX_TOTAL_CHARS) break;
+                if (!result.raw_content) continue;
+
+                const remaining = TAVILY_CONTEXT_MAX_TOTAL_CHARS - totalChars;
+                const trimmed = result.raw_content.slice(
+                  0,
+                  Math.min(TAVILY_CONTENT_MAX_CHARS, remaining),
+                );
+                currentMap.set(result.url, trimmed);
+                totalChars += trimmed.length;
+              }
+
+              fullTextMap = currentMap;
+              console.log(`fullTextMap 更新後エントリ数: ${fullTextMap.size}`);
+            }
+          }
+        }
+      } catch (err) {
+        // 追加検索失敗時は警告のみ出力して続行（既存コンテキストで生成）
+        console.warn(
+          `Tavily 追加検索失敗（続行）: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
     }
   }
 
@@ -866,6 +927,10 @@ export const POST: APIRoute = async ({ request }) => {
   // 失敗時は RSS サマリーのみで続行するため、エラーは警告としてログに残す。
   let fullTextMap: Map<string, string> | undefined;
 
+  // Tavily API 呼び出し回数を一元管理する予算トラッカー。
+  // ルートハンドラ（Step A/C）と generateWithLLM（Step 0.5）で共有する。
+  const tavilyBudget: TavilyUsageBudget = { searchCalls: 0, extractUrls: 0 };
+
   if (env.TAVILY_API_KEY) {
     try {
       // Step A: RSS エントリから検索クエリを生成し、Tavily /search を実行
@@ -873,6 +938,8 @@ export const POST: APIRoute = async ({ request }) => {
       console.log(`Tavily search: ${tavilyQueries.length} queries`);
 
       const tavilyResults = await tavilySearch(env.TAVILY_API_KEY, tavilyQueries);
+      // 消費した search 回数を記録
+      tavilyBudget.searchCalls += tavilyQueries.length;
       console.log(`Tavily search returned ${tavilyResults.length} results`);
 
       // Step B: Tavily 結果を RSS エントリにマージし、URL で重複排除
@@ -889,14 +956,17 @@ export const POST: APIRoute = async ({ request }) => {
       const nonOfficialUrls = allUrls.filter(
         (url) => classifySourceType(url) !== "official",
       );
-      // 公式ソースを先頭に並べ、上限 TAVILY_EXTRACT_MAX_URLS 件を extract
+      // 公式ソースを先頭に並べ、総量上限（TAVILY_MAX_EXTRACT_URLS_TOTAL）の残枠内で extract
+      const extractBudgetForStepC = TAVILY_MAX_EXTRACT_URLS_TOTAL - tavilyBudget.extractUrls;
       const extractUrls = [
         ...officialUrls,
         ...nonOfficialUrls,
-      ].slice(0, TAVILY_EXTRACT_MAX_URLS);
+      ].slice(0, Math.min(TAVILY_EXTRACT_MAX_URLS, extractBudgetForStepC));
 
       console.log(`Tavily extract: ${extractUrls.length} URLs`);
       const extractResults = await tavilyExtract(env.TAVILY_API_KEY, extractUrls);
+      // 消費した extract URL 数を記録
+      tavilyBudget.extractUrls += extractUrls.length;
       console.log(`Tavily extract returned ${extractResults.length} results`);
 
       if (extractResults.length > 0) {
@@ -914,6 +984,10 @@ export const POST: APIRoute = async ({ request }) => {
       );
     }
   }
+
+  console.log(
+    `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${tavilyBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${tavilyBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
+  );
 
   // --- LLM generation -------------------------------------------------------
   let llmResult: {
@@ -934,6 +1008,8 @@ export const POST: APIRoute = async ({ request }) => {
       fullTextMap,
       // tavilyApiKey を渡すことで、トピック選定後の追加検索を有効にする
       env.TAVILY_API_KEY,
+      // 予算トラッカーを渡すことで Step 0.5 の呼び出しを残予算内に制限する
+      tavilyBudget,
     );
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
