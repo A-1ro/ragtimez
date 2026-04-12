@@ -193,10 +193,12 @@ jobs:
 
             # Extract slug from filename.
             # Handles both YYYY-MM-DD.md and YYYY-MM-DD.en.md patterns.
+            # Astro's glob loader uses github-slugger which strips dots,
+            # so 2026-04-10.en.md → ID "2026-04-10en" (not "2026-04-10.en").
             local FILENAME
             FILENAME=$(basename "$FILE")
             local SLUG="${FILENAME%.md}"
-            SLUG="${SLUG%.en}"
+            SLUG="${SLUG//./}"
 
             if [ -z "$TITLE" ] || [ -z "$SUMMARY" ] || [ -z "$SLUG" ]; then
               echo "Skipping Bluesky post (${LANG}): incomplete article metadata"
