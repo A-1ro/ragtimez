@@ -175,6 +175,10 @@ export async function postToBluesky(
 
 /**
  * Helper: count the length of a string in codepoints (not UTF-16 code units).
+ *
+ * Note: ZWJ composite emoji (e.g., 👨‍👩‍👧‍👦) are counted as multiple codepoints, one per component.
+ * Since codepoint count >= grapheme cluster count, staying within 300 codepoints also
+ * guarantees compliance with Bluesky's 300-grapheme limit.
  */
 function codepointLength(s: string): number {
   return Array.from(s).length;
@@ -182,6 +186,10 @@ function codepointLength(s: string): number {
 
 /**
  * Helper: slice a string by codepoints (not UTF-16 code units).
+ *
+ * Note: ZWJ composite emoji (e.g., 👨‍👩‍👧‍👦) are counted as multiple codepoints, one per component.
+ * Since codepoint count >= grapheme cluster count, staying within 300 codepoints also
+ * guarantees compliance with Bluesky's 300-grapheme limit.
  */
 function codepointSlice(s: string, end: number): string {
   return Array.from(s).slice(0, end).join("");
@@ -212,11 +220,20 @@ export function buildBlueskyPostText(
 ): string {
   const BLUESKY_MAX_GRAPHEMES = 300;
 
+  // Truncate title if it exceeds the maximum allowed codepoints.
+  // A fixed cap of 200 codepoints is used so that the CTA and at least a minimal
+  // summary can always fit within the 300-codepoint total budget.
+  const TITLE_MAX_CODEPOINTS = 200;
+  let truncatedTitle = title;
+  if (codepointLength(title) > TITLE_MAX_CODEPOINTS) {
+    truncatedTitle = codepointSlice(title, TITLE_MAX_CODEPOINTS - 1) + "…";
+  }
+
   // Build the fixed parts around the summary
   const ctaPart = `\n\n${ctaText}\n${url}`;
 
   // Calculate overhead in codepoints (all parts except summary)
-  const headerCodepoints = codepointLength(title);
+  const headerCodepoints = codepointLength(truncatedTitle);
   const ctaPartCodepoints = codepointLength(ctaPart);
   const newlineBeforeSummary = 2; // "\n\n"
   const totalOverhead = headerCodepoints + newlineBeforeSummary + ctaPartCodepoints;
@@ -233,7 +250,7 @@ export function buildBlueskyPostText(
   }
 
   // Build final text
-  const text = `${title}\n\n${finalSummary}${ctaPart}`;
+  const text = `${truncatedTitle}\n\n${finalSummary}${ctaPart}`;
 
   return text;
 }
