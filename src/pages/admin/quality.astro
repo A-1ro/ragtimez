@@ -244,8 +244,8 @@ function officialRatioPct(officialCount: number, total: number): string {
                 <th scope="col" class="num-col">スコア</th>
                 <th scope="col" class="num-col">グレード</th>
                 <th scope="col" class="num-col">ソース数</th>
-                <th scope="col" class="num-col">公式率</th>
-                <th scope="col" class="num-col">ノート数</th>
+                <th scope="col" class="num-col hide-mobile">公式率</th>
+                <th scope="col" class="num-col hide-mobile">ノート数</th>
               </tr>
             </thead>
             <tbody>
@@ -271,8 +271,8 @@ function officialRatioPct(officialCount: number, total: number): string {
                     </span>
                   </td>
                   <td class="num-col">{row.sourceCount}</td>
-                  <td class="num-col">{officialRatioPct(row.officialSourceCount, row.sourceCount)}</td>
-                  <td class="num-col">{row.noteCount}</td>
+                  <td class="num-col hide-mobile">{officialRatioPct(row.officialSourceCount, row.sourceCount)}</td>
+                  <td class="num-col hide-mobile">{row.noteCount}</td>
                 </tr>
               ))}
             </tbody>
@@ -525,6 +525,29 @@ function officialRatioPct(officialCount: number, total: number): string {
     .quality-table th,
     .quality-table td {
       padding: 0.6rem 0.75rem;
+    }
+
+    /* Bar chart mobile */
+    .bar-col {
+      min-width: 8px;
+    }
+    .bar-chart {
+      gap: 2px;
+      padding: 0.5rem 0.5rem 0;
+    }
+    .bar-label {
+      display: none;
+    }
+
+    /* Table mobile */
+    .hide-mobile {
+      display: none;
+    }
+    .title-col {
+      min-width: unset;
+    }
+    .quality-table {
+      font-size: 0.8rem;
     }
   }
 </style>
