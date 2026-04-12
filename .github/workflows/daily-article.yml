@@ -73,16 +73,16 @@ jobs:
           # --- Japanese article (required) ---
           # Use md5sum-based snapshot so --force overwrites are detected as changes,
           # not just new files (file-name-only comparison misses same-name overwrites).
-          BEFORE_JA=$(find src/content/articles/ -maxdepth 1 -type f -name '*.md' ! -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
+          BEFORE_JA=$(find src/content/articles/ -maxdepth 1 -type f -name '*.md' ! -name '*.en.md' -exec md5sum {} + 2>/dev/null | LC_ALL=C sort || true)
           npm run generate:article -- --lang ja ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}
-          AFTER_JA=$(find src/content/articles/ -maxdepth 1 -type f -name '*.md' ! -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
+          AFTER_JA=$(find src/content/articles/ -maxdepth 1 -type f -name '*.md' ! -name '*.en.md' -exec md5sum {} + 2>/dev/null | LC_ALL=C sort || true)
           if [ "$BEFORE_JA" = "$AFTER_JA" ]; then
-            echo "Error: Japanese article was not generated. Aborting."
+            echo "Error: Japanese article was not generated (file may already exist; use --force to overwrite). Aborting."
             exit 1
           fi
           # Extract path from the diff's '>' lines (added or changed entries in AFTER).
           # diff's '>' prefix shifts fields: "> <hash>  <path>" → $1=">", $2=hash, $3=path
-          JA_CHANGED=$(diff <(echo "$BEFORE_JA") <(echo "$AFTER_JA") | grep '^>' | head -1 | awk '{print $3}' || true)
+          JA_CHANGED=$(diff <(printf '%s\n' "$BEFORE_JA") <(printf '%s\n' "$AFTER_JA") | grep '^>' | head -1 | awk '{print $3}' || true)
           if [ -z "$JA_CHANGED" ]; then
             echo "Error: Could not identify generated Japanese article file."
             exit 1
@@ -92,11 +92,11 @@ jobs:
           echo "Generated ja: ${JA_ARTICLE_FILE}"
 
           # --- English article (optional — failure is a warning, not a job failure) ---
-          BEFORE_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
+          BEFORE_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | LC_ALL=C sort || true)
           if npm run generate:article -- --lang en ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; then
-            AFTER_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | sort || true)
+            AFTER_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | LC_ALL=C sort || true)
             if [ "$BEFORE_EN" != "$AFTER_EN" ]; then
-              EN_CHANGED=$(diff <(echo "$BEFORE_EN") <(echo "$AFTER_EN") | grep '^>' | head -1 | awk '{print $3}' || true)
+              EN_CHANGED=$(diff <(printf '%s\n' "$BEFORE_EN") <(printf '%s\n' "$AFTER_EN") | grep '^>' | head -1 | awk '{print $3}' || true)
               if [ -n "$EN_CHANGED" ]; then
                 EN_ARTICLE_FILE="${EN_CHANGED}"
                 echo "en_article_file=${EN_ARTICLE_FILE}" >> $GITHUB_OUTPUT
@@ -174,7 +174,7 @@ jobs:
 
       - name: Post to Bluesky
         # Posts both Japanese and English articles when available.
-        if: steps.commit.outcome == 'success'
+        if: steps.commit.outcome == 'success' && (steps.generate.outputs.ja_article_file != '' || steps.generate.outputs.en_article_file != '')
         continue-on-error: true
         env:
           BLUESKY_POST_URL: ${{ secrets.BLUESKY_POST_URL }}

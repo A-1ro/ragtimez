@@ -28,7 +28,7 @@
  */
 
 import { writeFileSync, existsSync } from "node:fs";
-import { resolve, dirname } from "node:path";
+import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
 const __filename = fileURLToPath(import.meta.url);
@@ -178,6 +178,12 @@ try {
 if (!article.content || !article.filename) {
   console.error("Error: API response is missing required fields (content, filename)");
   console.error(`  Received: ${JSON.stringify(Object.keys(article))}`);
+  process.exit(1);
+}
+
+// Defensive check: reject path traversal in API-provided filename
+if (article.filename !== basename(article.filename)) {
+  console.error(`Error: invalid filename from API: ${article.filename}`);
   process.exit(1);
 }
 
