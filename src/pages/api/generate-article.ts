@@ -257,7 +257,7 @@ const METADATA_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 // 以前は Kimi K2.5 (中国語系) を編集に使用していたが、Qwen3 と同じ盲点を
 // 共有するため中国語混入やカタカナ音写エラーを検出できなかった。
 const DRAFT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8" as const;
-const EDITOR_MODEL = "@cf/google/gemma-4-26b-a4b-it" as const;
+const EDITOR_MODEL = "@cf/meta/llama-4-scout-17b-16e-instruct" as const;
 
 /**
  * Load recent past articles from the content collection to avoid topic duplication.
