@@ -447,9 +447,15 @@ function extractText(response: unknown): string {
   if (r.response !== undefined) {
     return typeof r.response === "string" ? r.response : JSON.stringify(r.response);
   }
-  const choices = r.choices as { message: { content: string } }[] | undefined;
-  const content = choices?.[0]?.message?.content;
-  if (typeof content === "string") return content;
+  const choices = r.choices as
+    | { message: { content: string | null; reasoning: string | null } }[]
+    | undefined;
+  const msg = choices?.[0]?.message;
+  if (msg) {
+    // Some models (e.g. Gemma) put output in `reasoning` instead of `content`
+    if (typeof msg.content === "string") return msg.content;
+    if (typeof msg.reasoning === "string") return msg.reasoning;
+  }
   // Some models return a parsed object directly (e.g. in json_object mode).
   return JSON.stringify(response);
 }
@@ -1096,7 +1102,7 @@ async function generateWithLLM(
           },
           { role: "user", content: editorUserContent },
         ],
-        max_tokens: 3584,
+        max_tokens: 8192,
         temperature: 0.3,
       },
     );
