@@ -94,18 +94,25 @@ allArticles.sort(
 );
 
 // ---------------------------------------------------------------------------
-// Fetch note counts from D1 in a single query
+// Fetch note counts by type from D1 in a single query
 // ---------------------------------------------------------------------------
-type NoteCountRow = { article_slug: string; cnt: number };
-const noteCountMap = new Map<string, number>();
+type NoteCountRow = { article_slug: string; note_type: string; cnt: number };
+const noteCountMap = new Map<string, { supplementCount: number; correctionCount: number }>();
 
 try {
   if (env.DB) {
     const result = await env.DB.prepare(
-      "SELECT article_slug, COUNT(*) AS cnt FROM notes GROUP BY article_slug"
+      "SELECT article_slug, note_type, COUNT(*) AS cnt FROM notes GROUP BY article_slug, note_type"
     ).all<NoteCountRow>();
     for (const row of result.results ?? []) {
-      noteCountMap.set(row.article_slug, row.cnt);
+      const existing = noteCountMap.get(row.article_slug) ?? { supplementCount: 0, correctionCount: 0 };
+      if (row.note_type === "correction") {
+        existing.correctionCount = row.cnt;
+      } else {
+        // Default: treat anything that is not "correction" as "supplement"
+        existing.supplementCount = row.cnt;
+      }
+      noteCountMap.set(row.article_slug, existing);
     }
   }
 } catch {
@@ -122,12 +129,13 @@ type ArticleQualityRow = {
   score: QualityScore;
   sourceCount: number;
   officialSourceCount: number;
-  noteCount: number;
+  supplementCount: number;
+  correctionCount: number;
 };
 
 const rows: ArticleQualityRow[] = allArticles.map((article) => {
-  const noteCount = noteCountMap.get(article.id) ?? 0;
-  const score = computeArticleQualityFromData(article.data, noteCount);
+  const noteCounts = noteCountMap.get(article.id) ?? { supplementCount: 0, correctionCount: 0 };
+  const score = computeArticleQualityFromData(article.data, noteCounts);
   return {
     id: article.id,
     title: article.data.title,
@@ -135,7 +143,8 @@ const rows: ArticleQualityRow[] = allArticles.map((article) => {
     score,
     sourceCount: score.breakdown.sourceCount,
     officialSourceCount: score.breakdown.officialSourceCount,
-    noteCount,
+    supplementCount: noteCounts.supplementCount,
+    correctionCount: noteCounts.correctionCount,
   };
 });
 
@@ -248,7 +257,7 @@ function officialRatioPct(officialCount: number, total: number): string {
                 <th scope="col" class="num-col">グレード</th>
                 <th scope="col" class="num-col">ソース数</th>
                 <th scope="col" class="num-col hide-mobile">公式率</th>
-                <th scope="col" class="num-col hide-mobile">ノート数</th>
+                <th scope="col" class="num-col hide-mobile">補足/訂正</th>
               </tr>
             </thead>
             <tbody>
@@ -275,7 +284,7 @@ function officialRatioPct(officialCount: number, total: number): string {
                   </td>
                   <td class="num-col">{row.sourceCount}</td>
                   <td class="num-col hide-mobile">{officialRatioPct(row.officialSourceCount, row.sourceCount)}</td>
-                  <td class="num-col hide-mobile">{row.noteCount}</td>
+                  <td class="num-col hide-mobile">{row.supplementCount}/{row.correctionCount}</td>
                 </tr>
               ))}
             </tbody>
