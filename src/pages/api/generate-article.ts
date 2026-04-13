@@ -41,15 +41,18 @@ const TAVILY_EXTRACT_MAX_URLS = 5;
 
 /**
  * LLM コンテキストに組み込む際の、1 ソースあたりの本文最大文字数。
- * 約 500〜700 トークン相当。
+ * 公式ドキュメントのコード例や API シグネチャが切り捨てられないよう、
+ * 十分な長さを確保する（約 1000〜1500 トークン相当）。
  */
-const TAVILY_CONTENT_MAX_CHARS = 2000;
+const TAVILY_CONTENT_MAX_CHARS = 4000;
 
 /**
  * Tavily 本文を含むコンテキスト全体の最大文字数。
- * Llama 3.3 70B の 128k-token コンテキストウィンドウの安全マージンを考慮した上限。
+ * ドラフト生成 (Qwen3, 128k) と編集 (Gemma 4, 256k) の両方で使用されるため、
+ * Qwen3 の 128k-token コンテキストウィンドウの安全マージンを基準とする。
+ * ソースあたり上限引き上げ (2000→4000) に合わせて全体上限も拡大。
  */
-const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 40_000;
+const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 60_000;
 
 /**
  * 1 回の /api/generate-article リクエスト全体で許容する Tavily /search クエリ数（= API リクエスト数）の上限。
@@ -249,8 +252,12 @@ const TOPIC_SELECTION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as cons
 const METADATA_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
 // Issue #144: 本文はドラフト生成→編集レビューの2段構成に変更
+// ドラフト: Qwen3 (中国語系、日本語ドラフトで中国語混入リスクあり)
+// 編集: Gemma 4 (Google DeepMind 製、非中国語系で中国語混入を検出可能)
+// 以前は Kimi K2.5 (中国語系) を編集に使用していたが、Qwen3 と同じ盲点を
+// 共有するため中国語混入やカタカナ音写エラーを検出できなかった。
 const DRAFT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8" as const;
-const EDITOR_MODEL = "@cf/moonshot-ai/kimi-k2.5" as const;
+const EDITOR_MODEL = "@cf/google/gemma-4-26b-a4b-it" as const;
 
 /**
  * Load recent past articles from the content collection to avoid topic duplication.
@@ -687,13 +694,38 @@ async function generateWithLLM(
         );
       } else {
         try {
-          const additionalQuery = sanitizeExternalContent(topicSelection.topic).slice(0, MAX_TITLE_LENGTH);
-          console.log(`Tavily 追加検索（トピックベース、試行 ${attempt + 1}/${maxAttempts}）: "${additionalQuery.slice(0, 200)}"`);
+          // トピックからキーワードを抽出し、公式ドキュメント向けクエリを生成する。
+          // ニュース記事の再検索ではなく、公式ドキュメント・チュートリアル・API リファレンスを狙う。
+          const topicText = sanitizeExternalContent(topicSelection.topic).slice(0, MAX_TITLE_LENGTH);
+          const docQuery = `${topicText} documentation tutorial API`;
+          console.log(`Tavily 公式ドキュメント検索（試行 ${attempt + 1}/${maxAttempts}）: "${docQuery.slice(0, 200)}"`);
 
-          const additionalSearchResults = await tavilySearch(tavilyApiKey, [additionalQuery]);
+          // トピックに関連する公式ドメインを選定エントリから推定する。
+          // 既に selectedEntries にある公式ソースのドメインを収集し、
+          // それに加えて OFFICIAL_DOMAINS のうちトピック関連のものを含める。
+          const entryDomains = new Set<string>();
+          for (const entry of selectedEntries) {
+            try {
+              const hostname = new URL(entry.link).hostname.replace(/^www\./, "");
+              for (const domain of OFFICIAL_DOMAINS) {
+                if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+                  entryDomains.add(domain);
+                }
+              }
+            } catch { /* skip invalid URLs */ }
+          }
+          // 公式ドメインが見つかった場合は include_domains で絞り込み、
+          // 見つからない場合は search_depth: "advanced" で広く検索する。
+          const hasOfficialDomains = entryDomains.size > 0;
+          const searchOptions = hasOfficialDomains
+            ? { search_depth: "advanced" as const, include_domains: [...entryDomains] }
+            : { search_depth: "advanced" as const };
+
+          console.log(`Tavily search options: depth=advanced, domains=${hasOfficialDomains ? [...entryDomains].join(",") : "(none)"}`);
+          const additionalSearchResults = await tavilySearch(tavilyApiKey, [docQuery], searchOptions);
           // 消費した search 回数を記録
           if (tavilyBudget) tavilyBudget.searchCalls += 1;
-          console.log(`Tavily 追加検索結果: ${additionalSearchResults.length} 件`);
+          console.log(`Tavily 公式ドキュメント検索結果: ${additionalSearchResults.length} 件`);
 
           if (additionalSearchResults.length > 0) {
             // 追加検索結果を selectedEntries にマージして buildContext で参照可能にする
@@ -1025,9 +1057,16 @@ async function generateWithLLM(
       "   (a) 数値・API名・製品名・バージョン。\n" +
       "   (b) 機能説明の正確性: ドラフトが「XはYを行う」「XはYを保護する」と記述している場合、[Source] ブロックでXがその機能として説明されているか検証する。ソースがXに異なる機能を記述している場合は、説明を訂正する。\n" +
       "   (c) ソースに記載のない主張は削除または訂正する。事実を捏造しない。\n" +
-      "3. 日本語の読みやすさ: 冗長な言い回しや翻訳調の表現を修正し、自然な日本語技術文書として読めるよう整える。\n" +
-      "   以下の禁止フレーズが残っていた場合は必ず修正すること:\n" +
-      "   '〜ができます', '〜することができます', '〜する必要があります', '〜することが重要です', '〜を向上させる', '重要な役割を果たします'\n" +
+      "3. 日本語の正確性と読みやすさ:\n" +
+      "   (a) 中国語混入チェック: ドラフト生成モデルは中国語由来のため、中国語の接続詞・助詞が混入している可能性がある。\n" +
+      "       「和」(中国語の「と」) → 「と」「および」、「的」→「の」、「了」「在」「是」「很」「也」「都」等 → 適切な日本語に置換。\n" +
+      "       中国語の簡体字が混入している場合は対応する日本語の漢字に置換する。\n" +
+      "   (b) カタカナ音写チェック: 英語技術用語のカタカナ表記が正確か検証する。\n" +
+      "       例: 「ソーバー」「ソバリン」→ 正:「ソブリン」(sovereign)、「セキュリティー」→ 正:「セキュリティ」。\n" +
+      "       判断に迷う場合は Microsoft Learn 日本語版での表記に従う。\n" +
+      "   (c) 冗長な言い回しや翻訳調の表現を修正し、自然な日本語技術文書として読めるよう整える。\n" +
+      "       以下の禁止フレーズが残っていた場合は必ず修正すること:\n" +
+      "       '〜ができます', '〜することができます', '〜する必要があります', '〜することが重要です', '〜を向上させる', '重要な役割を果たします'\n" +
       "4. 構造・フォーマットの維持: ## 見出し構造、段落の長さ制限（2〜3文）、コードブロック、出典 URL `（出典: <url>）` の記載を壊さない。セクションの再構成・改名は禁止。\n\n" +
       "厳禁事項:\n" +
       "- ソース原文に記載のない内容を追加しない。\n" +

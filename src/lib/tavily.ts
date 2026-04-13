@@ -64,17 +64,33 @@ interface TavilyExtractApiResponse {
 // ---------------------------------------------------------------------------
 
 /**
+ * Tavily /search のオプション。
+ * 指定しないフィールドはデフォルト値が使われる。
+ */
+export interface TavilySearchOptions {
+  /** 検索深度。"basic"(デフォルト) or "advanced"(より多くの結果、高コスト) */
+  search_depth?: "basic" | "advanced";
+  /** 検索結果を特定ドメインに限定する（例: ["learn.microsoft.com", "docs.anthropic.com"]） */
+  include_domains?: string[];
+}
+
+/**
  * Tavily /search — 複数クエリを並列実行し、URL＋抜粋を返す。
  *
  * @param apiKey   Tavily API キー（TAVILY_API_KEY）
  * @param queries  検索クエリの配列（例: ["Azure AI latest", "OpenAI API changes"]）
+ * @param options  検索オプション（search_depth, include_domains）
  * @returns        URL重複排除済みの検索結果。エラー時は空配列。
  */
 export async function tavilySearch(
   apiKey: string,
   queries: string[],
+  options?: TavilySearchOptions,
 ): Promise<TavilySearchResult[]> {
   if (queries.length === 0) return [];
+
+  const searchDepth = options?.search_depth ?? "basic";
+  const includeDomains = options?.include_domains;
 
   // 複数クエリを並列実行
   const requests = queries.map((query) =>
@@ -87,10 +103,13 @@ export async function tavilySearch(
       },
       body: JSON.stringify({
         query,
-        search_depth: "basic",
+        search_depth: searchDepth,
         max_results: 5,
         // コスト節約: フルテキストは /extract で取得するため不要
         include_raw_content: false,
+        ...(includeDomains && includeDomains.length > 0
+          ? { include_domains: includeDomains }
+          : {}),
       }),
     }).then(async (res): Promise<TavilySearchResult[]> => {
       // 429 (rate limit) / 5xx はフォールバックとして空配列を返す
