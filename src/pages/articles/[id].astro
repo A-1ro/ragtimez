@@ -26,38 +26,45 @@ const { Content } = await render(article);
 const trust = trustLabelMap[article.data.trustLevel];
 const user = Astro.locals.user ?? null;
 
-// Fetch note count from D1 for quality scoring. Gracefully fall back to 0
-// when D1 is unavailable (e.g. local Astro dev without wrangler bindings).
-let noteCount = 0;
+// Fetch note counts by type from D1 for quality scoring. Gracefully falls back
+// to zeros when D1 is unavailable (e.g. local Astro dev without wrangler bindings).
+let noteCounts = { supplementCount: 0, correctionCount: 0 };
 try {
   if (env.DB) {
-    const row = await env.DB.prepare(
-      "SELECT COUNT(*) AS cnt FROM notes WHERE article_slug = ?"
+    type NoteTypeRow = { note_type: string; cnt: number };
+    const result = await env.DB.prepare(
+      "SELECT note_type, COUNT(*) AS cnt FROM notes WHERE article_slug = ? GROUP BY note_type"
     )
       .bind(article.id)
-      .first<{ cnt: number }>();
-    noteCount = row?.cnt ?? 0;
+      .all<NoteTypeRow>();
+    for (const row of result.results ?? []) {
+      if (row.note_type === "correction") {
+        noteCounts.correctionCount = row.cnt;
+      } else {
+        noteCounts.supplementCount = row.cnt;
+      }
+    }
   }
 } catch {
   // Non-fatal: DB unavailable in local dev
 }
 
-const quality = computeArticleQualityFromData(article.data, noteCount);
+const quality = computeArticleQualityFromData(article.data, noteCounts);
 
 const qualityColor = GRADE_COLORS[quality.grade] ?? "#6b7db3";
 
-// Format the notes penalty as "-N" only when N > 0; show "0" when there is no penalty.
-const notesPenaltyDisplay =
-  quality.breakdown.notesPenalty > 0
-    ? `-${quality.breakdown.notesPenalty}`
-    : "0";
+// Format the notes adjustment — prefix with "+" for positive values, show as-is for negative/zero.
+const notesAdjustmentDisplay =
+  quality.breakdown.notesAdjustment > 0
+    ? `+${quality.breakdown.notesAdjustment}`
+    : String(quality.breakdown.notesAdjustment);
 
 const qualityTooltip = [
   `スコア: ${quality.score}/100`,
   `ソース数: +${quality.breakdown.sources}`,
   `公式ソース率: +${quality.breakdown.officialRatio}`,
   `信頼度: +${quality.breakdown.trustLevel}`,
-  `コミュニティノート補正: ${notesPenaltyDisplay}`,
+  `コミュニティノート補正: ${notesAdjustmentDisplay}`,
 ].join(" | ");
 
 // Resolve the counterpart English article, if it exists.
@@ -128,7 +135,7 @@ if (user && env.DB) {
               </div>
               <div class="breakdown-row">
                 <dt>コミュニティノート補正</dt>
-                <dd>{notesPenaltyDisplay}</dd>
+                <dd>{notesAdjustmentDisplay}</dd>
               </div>
               <div class="breakdown-row breakdown-total">
                 <dt>合計</dt>
@@ -235,6 +242,16 @@ if (user && env.DB) {
               maxlength="1000"
               required
             ></textarea>
+            <div class="note-type-selector">
+              <label class="note-type-label">
+                <input type="radio" name="note_type" value="supplement" checked />
+                <span class="note-type-text">💡 補足・追加情報</span>
+              </label>
+              <label class="note-type-label">
+                <input type="radio" name="note_type" value="correction" />
+                <span class="note-type-text">⚠️ 訂正・誤り指摘</span>
+              </label>
+            </div>
             <div class="form-footer">
               <span id="char-count" class="char-count">0 / 1000</span>
               <button type="submit" class="submit-button">投稿する</button>
@@ -890,6 +907,48 @@ if (user && env.DB) {
     margin-bottom: 1rem;
   }
 
+  /* Note type radio selector */
+  .note-type-selector {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .note-type-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--color-text);
+  }
+
+  .note-type-label input[type="radio"] {
+    accent-color: var(--color-accent, #3d8ef5);
+  }
+
+  /* Note type badge (rendered inside each note item by JS) */
+  :global(.note-type-badge) {
+    display: inline-block;
+    padding: 0.1em 0.45em;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  :global(.note-type-badge.supplement) {
+    background-color: #22c55e22;
+    color: #22c55e;
+    border: 1px solid #22c55e44;
+  }
+
+  :global(.note-type-badge.correction) {
+    background-color: #f59e0b22;
+    color: #f59e0b;
+    border: 1px solid #f59e0b44;
+  }
+
   /* Bookmark button */
   .bookmark-container {
     margin-top: 1.25rem;
@@ -1074,6 +1133,8 @@ if (user && env.DB) {
     helpful_count: number;
     /** Whether the currently authenticated viewer has voted this note as helpful. */
     viewer_has_voted: boolean;
+    /** Note classification: supplementary information or a correction. */
+    note_type: string;
   }
 
   // Get data attributes from the section
@@ -1130,6 +1191,11 @@ if (user && env.DB) {
       ? `<span class="contributor-badge" style="background-color:${badgeInfo.color}22;color:${badgeInfo.color};border-color:${badgeInfo.color}44;">${escapeHtml(badgeInfo.label)}</span>`
       : "";
 
+    // Build note type badge HTML.
+    const noteTypeBadgeHtml = note.note_type === "correction"
+      ? `<span class="note-type-badge correction">⚠️ 訂正</span>`
+      : `<span class="note-type-badge supplement">💡 補足</span>`;
+
     // Helpful button — shown for all notes; requires login to actually vote.
     const votedClass = note.viewer_has_voted ? " voted" : "";
     // Filled thumb when voted, outline when not.
@@ -1149,6 +1215,7 @@ if (user && env.DB) {
         <div class="note-header">
           <div class="note-meta">
             <a href="/profile/${escapeHtml(note.author_username)}" class="note-username">${escapeHtml(note.author_username)}</a>
+            ${noteTypeBadgeHtml}
             ${badgeHtml}
             <span class="note-date">${formatRelativeTime(note.created_at)}</span>
           </div>
@@ -1347,6 +1414,7 @@ if (user && env.DB) {
       submitBtn.textContent = "投稿中…";
 
       try {
+        const noteType = (noteForm.querySelector('input[name="note_type"]:checked') as HTMLInputElement)?.value ?? "supplement";
         const response = await fetch("/api/notes", {
           method: "POST",
           headers: {
@@ -1355,6 +1423,7 @@ if (user && env.DB) {
           body: JSON.stringify({
             article_slug: articleId,
             body,
+            note_type: noteType,
           }),
         });
 

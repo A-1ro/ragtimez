@@ -9,6 +9,7 @@ import { verifyCsrf } from "../../../lib/csrf";
  * across all articles, used to compute contributor badges on the client.
  * `helpful_count` is the number of "helpful" votes the note has received.
  * `viewer_has_voted` indicates whether the currently authenticated user has voted.
+ * `note_type` classifies the note as supplementary information or a correction.
  */
 export interface Note {
   id: string;
@@ -25,6 +26,8 @@ export interface Note {
   helpful_count: number;
   /** Whether the currently authenticated viewer has voted this note as helpful. */
   viewer_has_voted: boolean;
+  /** Note classification: supplementary information or a correction. */
+  note_type: 'supplement' | 'correction';
 }
 
 /**
@@ -84,7 +87,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
       // Authenticated: join vote counts and per-viewer vote status in one query.
       const result = await env.DB.prepare(
         `SELECT n.id, n.article_slug, n.author_github_id, n.author_username, n.author_avatar,
-                n.body, n.created_at, n.updated_at,
+                n.body, n.created_at, n.updated_at, n.note_type,
                 COALESCE(c.cnt, 0) AS author_note_count,
                 COALESCE(v.cnt, 0) AS helpful_count,
                 CASE WHEN vu.note_id IS NOT NULL THEN 1 ELSE 0 END AS viewer_has_voted
@@ -123,7 +126,7 @@ export const GET: APIRoute = async ({ request, locals }) => {
       // Unauthenticated: no viewer vote join needed; hardcode viewer_has_voted = false.
       const result = await env.DB.prepare(
         `SELECT n.id, n.article_slug, n.author_github_id, n.author_username, n.author_avatar,
-                n.body, n.created_at, n.updated_at,
+                n.body, n.created_at, n.updated_at, n.note_type,
                 COALESCE(c.cnt, 0) AS author_note_count,
                 COALESCE(v.cnt, 0) AS helpful_count
          FROM notes n
@@ -254,6 +257,16 @@ export const POST: APIRoute = async ({ request, locals }) => {
   const payload = body as Record<string, unknown>;
   const articleSlug = String(payload.article_slug ?? "").trim();
   const noteBody = String(payload.body ?? "").trim();
+  const rawNoteType = String(payload.note_type ?? "supplement").trim();
+
+  // Validate note_type — only "supplement" or "correction" are accepted.
+  if (rawNoteType !== "supplement" && rawNoteType !== "correction") {
+    return new Response(
+      JSON.stringify({ error: t(lang, "noteErrInvalidType") }),
+      { status: 400, headers: { "Content-Type": "application/json" } }
+    );
+  }
+  const noteType = rawNoteType as "supplement" | "correction";
 
   // Validation
   if (!articleSlug || articleSlug.length === 0) {
@@ -299,10 +312,10 @@ export const POST: APIRoute = async ({ request, locals }) => {
 
     // Insert note
     await env.DB.prepare(
-      `INSERT INTO notes (id, article_slug, author_github_id, author_username, author_avatar, body, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?)`
+      `INSERT INTO notes (id, article_slug, author_github_id, author_username, author_avatar, body, note_type, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`
     )
-      .bind(noteId, articleSlug, githubId, username, avatarUrl, noteBody, now, now)
+      .bind(noteId, articleSlug, githubId, username, avatarUrl, noteBody, noteType, now, now)
       .run();
 
     // Fetch the author's updated total note count (includes the note just inserted).
@@ -327,6 +340,7 @@ export const POST: APIRoute = async ({ request, locals }) => {
       // A freshly created note has no votes yet.
       helpful_count: 0,
       viewer_has_voted: false,
+      note_type: noteType,
     };
 
     return new Response(

@@ -24,21 +24,28 @@ const { Content } = await render(article);
 const trustColor = getTrustColor(article.data.trustLevel);
 const user = Astro.locals.user ?? null;
 
-let noteCount = 0;
+let noteCounts = { supplementCount: 0, correctionCount: 0 };
 try {
   if (env.DB) {
-    const row = await env.DB.prepare(
-      "SELECT COUNT(*) AS cnt FROM notes WHERE article_slug = ?"
+    type NoteTypeRow = { note_type: string; cnt: number };
+    const result = await env.DB.prepare(
+      "SELECT note_type, COUNT(*) AS cnt FROM notes WHERE article_slug = ? GROUP BY note_type"
     )
       .bind(article.id)
-      .first<{ cnt: number }>();
-    noteCount = row?.cnt ?? 0;
+      .all<NoteTypeRow>();
+    for (const row of result.results ?? []) {
+      if (row.note_type === "correction") {
+        noteCounts.correctionCount = row.cnt;
+      } else {
+        noteCounts.supplementCount = row.cnt;
+      }
+    }
   }
 } catch {
   // Non-fatal: DB unavailable in local dev
 }
 
-const quality = computeArticleQualityFromData(article.data, noteCount);
+const quality = computeArticleQualityFromData(article.data, noteCounts);
 
 const gradeColor: Record<string, string> = {
   A: "#22c55e",
@@ -48,17 +55,17 @@ const gradeColor: Record<string, string> = {
 };
 const qualityColor = gradeColor[quality.grade] ?? "#6b7db3";
 
-const notesPenaltyDisplay =
-  quality.breakdown.notesPenalty > 0
-    ? `-${quality.breakdown.notesPenalty}`
-    : "0";
+const notesAdjustmentDisplay =
+  quality.breakdown.notesAdjustment > 0
+    ? `+${quality.breakdown.notesAdjustment}`
+    : String(quality.breakdown.notesAdjustment);
 
 const qualityTooltip = [
   `Score: ${quality.score}/100`,
   `Sources: +${quality.breakdown.sources}`,
   `Official source ratio: +${quality.breakdown.officialRatio}`,
   `Trust level: +${quality.breakdown.trustLevel}`,
-  `Community notes adjustment: ${notesPenaltyDisplay}`,
+  `Community notes adjustment: ${notesAdjustmentDisplay}`,
 ].join(" | ");
 
 // Resolve the counterpart Japanese article, if it exists.
@@ -116,7 +123,7 @@ const alternateLangHref: string | null = counterpart
               </div>
               <div class="breakdown-row">
                 <dt>Community notes adjustment</dt>
-                <dd>{notesPenaltyDisplay}</dd>
+                <dd>{notesAdjustmentDisplay}</dd>
               </div>
               <div class="breakdown-row breakdown-total">
                 <dt>Total</dt>
@@ -193,6 +200,16 @@ const alternateLangHref: string | null = counterpart
               maxlength="1000"
               required
             ></textarea>
+            <div class="note-type-selector">
+              <label class="note-type-label">
+                <input type="radio" name="note_type" value="supplement" checked />
+                <span class="note-type-text">💡 Supplement</span>
+              </label>
+              <label class="note-type-label">
+                <input type="radio" name="note_type" value="correction" />
+                <span class="note-type-text">⚠️ Correction</span>
+              </label>
+            </div>
             <div class="form-footer">
               <span id="char-count" class="char-count">0 / 1000</span>
               <button type="submit" class="submit-button">Post</button>
@@ -808,6 +825,48 @@ const alternateLangHref: string | null = counterpart
     background: var(--color-accent-hover);
   }
 
+  /* Note type radio selector */
+  .note-type-selector {
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .note-type-label {
+    display: flex;
+    align-items: center;
+    gap: 0.375rem;
+    cursor: pointer;
+    font-size: 0.875rem;
+    color: var(--color-text);
+  }
+
+  .note-type-label input[type="radio"] {
+    accent-color: var(--color-accent, #3d8ef5);
+  }
+
+  /* Note type badge (rendered inside each note item by JS) */
+  :global(.note-type-badge) {
+    display: inline-block;
+    padding: 0.1em 0.45em;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  :global(.note-type-badge.supplement) {
+    background-color: #22c55e22;
+    color: #22c55e;
+    border: 1px solid #22c55e44;
+  }
+
+  :global(.note-type-badge.correction) {
+    background-color: #f59e0b22;
+    color: #f59e0b;
+    border: 1px solid #f59e0b44;
+  }
+
   @media (max-width: 600px) {
     .article {
       padding: 1rem 0 2rem;
@@ -896,6 +955,8 @@ const alternateLangHref: string | null = counterpart
     helpful_count: number;
     /** Whether the currently authenticated viewer has voted this note as helpful. */
     viewer_has_voted: boolean;
+    /** Note classification: supplementary information or a correction. */
+    note_type: string;
   }
 
   // ---------------------------------------------------------------------------
@@ -997,6 +1058,11 @@ const alternateLangHref: string | null = counterpart
       ? `<span class="contributor-badge" style="background-color:${badgeInfo.color}22;color:${badgeInfo.color};border-color:${badgeInfo.color}44;">${escapeHtml(badgeInfo.label)}</span>`
       : "";
 
+    // Build note type badge HTML.
+    const noteTypeBadgeHtml = note.note_type === "correction"
+      ? `<span class="note-type-badge correction">⚠️ Correction</span>`
+      : `<span class="note-type-badge supplement">💡 Supplement</span>`;
+
     // Helpful button — shown for all notes; requires login to actually vote.
     const votedClass = note.viewer_has_voted ? " voted" : "";
     // Filled thumb when voted, outline when not.
@@ -1016,6 +1082,7 @@ const alternateLangHref: string | null = counterpart
         <div class="note-header">
           <div class="note-meta">
             <a href="/profile/${escapeHtml(note.author_username)}" class="note-username">${escapeHtml(note.author_username)}</a>
+            ${noteTypeBadgeHtml}
             ${badgeHtml}
             <span class="note-date">${formatRelativeTime(note.created_at)}</span>
           </div>
@@ -1203,6 +1270,7 @@ const alternateLangHref: string | null = counterpart
       submitBtn.textContent = "Posting…";
 
       try {
+        const noteType = (noteForm.querySelector('input[name="note_type"]:checked') as HTMLInputElement)?.value ?? "supplement";
         const response = await fetch("/api/notes?lang=en", {
           method: "POST",
           headers: {
@@ -1211,6 +1279,7 @@ const alternateLangHref: string | null = counterpart
           body: JSON.stringify({
             article_slug: articleId,
             body,
+            note_type: noteType,
           }),
         });
 

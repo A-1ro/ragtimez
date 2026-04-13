@@ -33,6 +33,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     noteErrInternal: "内部サーバーエラーが発生しました",
     noteErrRateLimit: "リクエストが多すぎます。しばらくしてから再度お試しください",
     noteErrVoteRateLimit: "投票リクエストが多すぎます。しばらくしてから再度お試しください",
+    noteErrInvalidType: "note_type は 'supplement' または 'correction' を指定してください",
     // Bookmark API error messages
     bookmarkErrUnauthorized: "認証が必要です",
     bookmarkErrDbUnavailable: "この環境ではDBバインディングを利用できません",
@@ -80,6 +81,7 @@ export const translations: Record<Lang, Record<string, string>> = {
     noteErrInternal: "Internal server error",
     noteErrRateLimit: "Too many requests. Please try again later.",
     noteErrVoteRateLimit: "Too many vote requests. Please try again later.",
+    noteErrInvalidType: "note_type must be 'supplement' or 'correction'",
     // Bookmark API error messages
     bookmarkErrUnauthorized: "Unauthorized: authentication required",
     bookmarkErrDbUnavailable: "DB binding is not available in this environment",
