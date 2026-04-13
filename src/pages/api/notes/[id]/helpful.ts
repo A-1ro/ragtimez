@@ -58,6 +58,34 @@ export const POST: APIRoute = async ({ request, params, locals }) => {
     );
   }
 
+  // Rate limit: max 60 votes per user per hour
+  try {
+    const rateLimitRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS cnt FROM note_votes WHERE user_github_id = ? AND created_at > datetime('now', '-1 hour')`
+    )
+      .bind(locals.user.githubId)
+      .first<{ cnt: number }>();
+
+    if ((rateLimitRow?.cnt ?? 0) >= 60) {
+      return new Response(
+        JSON.stringify({ error: t(lang, "noteErrVoteRateLimit") }),
+        {
+          status: 429,
+          headers: {
+            "Content-Type": "application/json",
+            "Retry-After": "3600",
+          },
+        }
+      );
+    }
+  } catch (err) {
+    console.error("[api/notes/id/helpful] rate limit check failed", { error: String(err) });
+    return new Response(
+      JSON.stringify({ error: t(lang, "noteErrInternal") }),
+      { status: 500, headers: { "Content-Type": "application/json" } }
+    );
+  }
+
   const noteId = params.id?.trim();
   if (!noteId) {
     return new Response(
