@@ -878,8 +878,13 @@ async function generateWithLLM(
       "You are a senior technical editor reviewing and revising a draft blog post.\n" +
       "You will receive: (1) the original source materials, and (2) a draft article.\n" +
       "Your task is to revise the draft to fix the following issues, in this order of priority:\n\n" +
-      "1. CENTRAL CLAIM: Check that the central claim of each [Source] block appears in the body. If the author's strongest argument or finding is missing, add it to the most relevant section.\n" +
-      "2. FACTUAL ACCURACY: Cross-check every factual claim against the [Source] blocks. Remove or correct any number, API name, product name, or version that is not supported by the sources. Do NOT invent facts.\n" +
+      "1. CENTRAL CLAIM & COVERAGE CHECK:\n" +
+      "   (a) Check that the central claim of each [Source] block appears in the body. If the author's strongest argument or finding is missing, add it to the most relevant section.\n" +
+      "   (b) Identify any major product names, announcements, or features mentioned in the [Source] blocks that are MISSING from the draft. If a [Source] mentions a named product/feature (e.g., 'Foundry Local', 'Sovereign Landing Zone') that is directly related to the article's topic but absent from the draft, ADD a brief mention (1-2 sentences) in the most relevant section.\n" +
+      "2. FACTUAL ACCURACY: Cross-check every factual claim against the [Source] blocks. This includes:\n" +
+      "   (a) Numbers, API names, product names, versions.\n" +
+      "   (b) FUNCTION DESCRIPTIONS: When the draft says 'X does Y' or 'X protects Y', verify that the [Source] blocks describe X with that specific function. If the source describes a different function for X, correct the description.\n" +
+      "   (c) Remove or correct any claim not supported by the sources. Do NOT invent facts.\n" +
       "3. READABILITY: Fix overly verbose sentences, remove translation-like phrasing, and ensure flow is natural for a native English technical audience.\n" +
       "4. STRUCTURE & FORMAT: Preserve all ## headings, paragraph length limits (2-3 sentences), code blocks, and source citation URLs. Do NOT restructure or rename sections.\n\n" +
       "STRICTLY FORBIDDEN:\n" +
