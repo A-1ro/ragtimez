@@ -878,8 +878,13 @@ async function generateWithLLM(
       "You are a senior technical editor reviewing and revising a draft blog post.\n" +
       "You will receive: (1) the original source materials, and (2) a draft article.\n" +
       "Your task is to revise the draft to fix the following issues, in this order of priority:\n\n" +
-      "1. CENTRAL CLAIM: Check that the central claim of each [Source] block appears in the body. If the author's strongest argument or finding is missing, add it to the most relevant section.\n" +
-      "2. FACTUAL ACCURACY: Cross-check every factual claim against the [Source] blocks. Remove or correct any number, API name, product name, or version that is not supported by the sources. Do NOT invent facts.\n" +
+      "1. CENTRAL CLAIM & COVERAGE CHECK:\n" +
+      "   (a) Check that the central claim of each [Source] block appears in the body. If the author's strongest argument or finding is missing, add it to the most relevant section.\n" +
+      "   (b) Identify any major product names, announcements, or features mentioned in the [Source] blocks that are MISSING from the draft. If a [Source] mentions a named product/feature (e.g., 'Foundry Local', 'Sovereign Landing Zone') that is directly related to the article's topic but absent from the draft, ADD a brief mention (1-2 sentences) in the most relevant section.\n" +
+      "2. FACTUAL ACCURACY: Cross-check every factual claim against the [Source] blocks. This includes:\n" +
+      "   (a) Numbers, API names, product names, versions.\n" +
+      "   (b) FUNCTION DESCRIPTIONS: When the draft says 'X does Y' or 'X protects Y', verify that the [Source] blocks describe X with that specific function. If the source describes a different function for X, correct the description.\n" +
+      "   (c) Remove or correct any claim not supported by the sources. Do NOT invent facts.\n" +
       "3. READABILITY: Fix overly verbose sentences, remove translation-like phrasing, and ensure flow is natural for a native English technical audience.\n" +
       "4. STRUCTURE & FORMAT: Preserve all ## headings, paragraph length limits (2-3 sentences), code blocks, and source citation URLs. Do NOT restructure or rename sections.\n\n" +
       "STRICTLY FORBIDDEN:\n" +
@@ -893,8 +898,13 @@ async function generateWithLLM(
       "あなたはシニアテクニカルエディターとして、ドラフト記事をレビュー・修正する役割を担います。\n" +
       "入力として (1) 一次ソース原文、(2) ドラフト記事 の2つを受け取ります。\n" +
       "以下の優先順位でドラフトを修正してください:\n\n" +
-      "1. 核心的主張の確認: 各 [Source] ブロックの著者の最も重要な主張や知見が本文に含まれているか確認する。欠落していた場合は、最も関連性の高いセクションに追加する。\n" +
-      "2. ファクトの正確性: すべての事実記述を [Source] ブロックと照合する。ソースに記載のない数値・API名・製品名・バージョンは削除または訂正する。事実を捏造しない。\n" +
+      "1. 核心的主張 & カバレッジチェック:\n" +
+      "   (a) 各 [Source] ブロックの著者の最も重要な主張や知見が本文に含まれているか確認する。欠落していた場合は、最も関連性の高いセクションに追加する。\n" +
+      "   (b) [Source] ブロックで言及されている主要な製品名・発表・機能のうち、ドラフトに欠落しているものを特定する。記事のトピックに直接関連する名前付き製品・機能（例: 'Foundry Local', 'Sovereign Landing Zone'）がドラフトにない場合、最も関連性の高いセクションに簡潔な言及（1〜2文）を追加する。\n" +
+      "2. ファクトの正確性: すべての事実記述を [Source] ブロックと照合する。対象:\n" +
+      "   (a) 数値・API名・製品名・バージョン。\n" +
+      "   (b) 機能説明の正確性: ドラフトが「XはYを行う」「XはYを保護する」と記述している場合、[Source] ブロックでXがその機能として説明されているか検証する。ソースがXに異なる機能を記述している場合は、説明を訂正する。\n" +
+      "   (c) ソースに記載のない主張は削除または訂正する。事実を捏造しない。\n" +
       "3. 日本語の読みやすさ: 冗長な言い回しや翻訳調の表現を修正し、自然な日本語技術文書として読めるよう整える。\n" +
       "   以下の禁止フレーズが残っていた場合は必ず修正すること:\n" +
       "   '〜ができます', '〜することができます', '〜する必要があります', '〜することが重要です', '〜を向上させる', '重要な役割を果たします'\n" +
