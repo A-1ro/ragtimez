@@ -436,6 +436,27 @@ function extractText(response: unknown): string {
 }
 
 /**
+ * LLM 出力全体が ```markdown ... ``` や ``` ... ``` の外皮フェンスで
+ * 囲まれている場合のみ、それを剥がす。
+ *
+ * 単純な regex（/^```.../ → /\s*```$/）だと「記事本文がコードブロックで
+ * 終わる場合」にその閉じバッククォートが巻き込まれて Markdown が壊れるため、
+ * 行単位で「先頭行 = 開きフェンス」かつ「末尾行 = 閉じフェンス」の双方を
+ * 満たす時だけ外皮を剥ぐ。
+ */
+function stripOuterMarkdownFence(text: string): string {
+  const lines = text.split("\n");
+  if (
+    lines.length >= 2 &&
+    /^```(?:markdown)?\s*$/i.test(lines[0].trim()) &&
+    lines[lines.length - 1].trim() === "```"
+  ) {
+    return lines.slice(1, -1).join("\n").trim();
+  }
+  return text.trim();
+}
+
+/**
  * Interface for topic selection response from Step 0.
  */
 interface TopicSelection {
@@ -886,6 +907,8 @@ async function generateWithLLM(
       "修正済みの Markdown 本文のみを出力すること。## から始め、前置きも後書きも含めないこと。";
 
   // user メッセージ: ソース原文とドラフトを区切りで渡す
+  // draftBody は第一者 LLM (Qwen3) の出力のため sanitizeExternalContent は適用しない。
+  // sanitize が必要なのは RSS/Tavily 由来の外部コンテンツのみで、それは contextBlock 側で処理済み。
   const editorUserContent =
     "=== Source materials ===\n" +
     contextBlock +
@@ -909,11 +932,9 @@ async function generateWithLLM(
       },
     );
 
-    // コードフェンスが付いていた場合に剥がす（メタデータ解析と同じ手順）
-    const revisedBody = extractText(editorResponse)
-      .replace(/^```(?:markdown)?\s*/i, "")
-      .replace(/\s*```$/i, "")
-      .trim();
+    // 編集者モデルが出力全体を ```markdown ... ``` で囲んできた場合にのみ外皮を剥がす。
+    // 記事本文末尾のコードブロックを破壊しないよう、行単位で判定する。
+    const revisedBody = stripOuterMarkdownFence(extractText(editorResponse));
 
     if (!revisedBody) {
       console.warn(`Step 2b editor review failed/empty, using draft: empty output from ${EDITOR_MODEL}`);
