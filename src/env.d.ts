@@ -100,6 +100,15 @@ declare namespace Cloudflare {
      * Set via: wrangler pages secret put TAVILY_API_KEY
      */
     TAVILY_API_KEY?: string;
+    /**
+     * Groq API key for high-quality draft generation using large models (llama-3.3-70b-versatile).
+     * Used by /api/generate-article as the primary draft model; falls back to CF Workers AI when unset.
+     * Optional — when unset, article generation uses CF Workers AI (DRAFT_FALLBACK_MODEL) directly.
+     *
+     * Get your API key from https://console.groq.com/keys
+     * Set via: wrangler pages secret put GROQ_API_KEY
+     */
+    GROQ_API_KEY?: string;
   }
 }
 
