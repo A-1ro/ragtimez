@@ -19,7 +19,7 @@ CREATE TABLE IF NOT EXISTS postprocess_banned_phrases (
 );
 
 -- 初期データ: カタカナ辞書
-INSERT INTO postprocess_katakana (wrong_form, correct_form, note) VALUES
+INSERT OR IGNORE INTO postprocess_katakana (wrong_form, correct_form, note) VALUES
   ('エントープライズ', 'エンタープライズ', 'enterprise'),
   ('ガートウェイ', 'ゲートウェイ', 'gateway'),
   ('ソーバー', 'ソブリン', 'sovereign'),
@@ -28,7 +28,7 @@ INSERT INTO postprocess_katakana (wrong_form, correct_form, note) VALUES
   ('アーキテクチャー', 'アーキテクチャ', 'architecture (長音不要)');
 
 -- 初期データ: 禁止フレーズ
-INSERT INTO postprocess_banned_phrases (pattern, severity, suggestion) VALUES
+INSERT OR IGNORE INTO postprocess_banned_phrases (pattern, severity, suggestion) VALUES
   ('必要がある', 'warn', '具体的な手段・手順に置き換える'),
   ('必要である', 'warn', '具体的な手段・手順に置き換える'),
   ('不可欠', 'warn', '具体的な理由・代替策を記述する'),

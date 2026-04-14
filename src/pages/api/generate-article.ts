@@ -565,20 +565,31 @@ async function postProcess(
     "SELECT pattern, severity, suggestion FROM postprocess_banned_phrases"
   ).all<{ pattern: string; severity: string; suggestion: string | null }>();
   for (const row of banned.results) {
-    const regex = new RegExp(row.pattern, "g");
-    if (regex.test(result)) {
-      console.warn(`禁止フレーズ検出 [${row.severity}]: "${row.pattern}"${row.suggestion ? ` → ${row.suggestion}` : ""}`);
+    try {
+      const regex = new RegExp(row.pattern, "g");
+      if (regex.test(result)) {
+        console.warn(`禁止フレーズ検出 [${row.severity}]: "${row.pattern}"${row.suggestion ? ` → ${row.suggestion}` : ""}`);
+      }
+    } catch (err) {
+      console.warn(`禁止フレーズの正規表現が不正です: "${row.pattern}" — ${err instanceof Error ? err.message : String(err)}`);
     }
   }
 
-  // 3. 番号参照出典 [N] を URL に展開
-  result = result.replace(/\[(\d+)\]/g, (match, num) => {
-    const idx = parseInt(num, 10) - 1;
-    if (idx >= 0 && idx < entries.length) {
-      return entries[idx].link;
-    }
-    return match;
-  });
+  // 3. 番号参照出典 [N] を URL に展開（コードフェンス内は除外）
+  // コードフェンス（```...```）で分割し、コードブロック外のみで置換する
+  const segments = result.split(/(```[\s\S]*?```)/g);
+  result = segments.map((segment, i) => {
+    // 奇数インデックスはコードフェンスの中身 → そのまま返す
+    if (i % 2 === 1) return segment;
+    // 偶数インデックスは通常テキスト → 番号参照を展開
+    return segment.replace(/\[(\d+)\]/g, (match, num) => {
+      const idx = parseInt(num, 10) - 1;
+      if (idx >= 0 && idx < entries.length) {
+        return entries[idx].link;
+      }
+      return match;
+    });
+  }).join("");
 
   return result;
 }
@@ -1078,7 +1089,8 @@ async function generateWithLLM(
       });
 
       if (!groqResponse.ok) {
-        throw new Error(`Groq API error: ${groqResponse.status} ${groqResponse.statusText}`);
+        const errorBody = await groqResponse.text().catch(() => "(failed to read body)");
+        throw new Error(`Groq API error: ${groqResponse.status} ${groqResponse.statusText} — ${errorBody.slice(0, 500)}`);
       }
 
       const groqData = await groqResponse.json() as {
@@ -1107,6 +1119,7 @@ async function generateWithLLM(
         },
       );
       draftBody = extractText(draftResponse).trim();
+      console.log(`Step 2a draft generated via CF Workers AI (fallback): ${draftBody.length} chars`);
     }
   } else {
     // GROQ_API_KEY 未設定: CF Workers AI を直接使用
@@ -1122,6 +1135,7 @@ async function generateWithLLM(
       },
     );
     draftBody = extractText(draftResponse).trim();
+    console.log(`Step 2a draft generated via CF Workers AI (GROQ_API_KEY not set): ${draftBody.length} chars`);
   }
 
   if (!draftBody) throw new Error("LLM returned empty draft body");
