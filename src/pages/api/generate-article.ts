@@ -1175,6 +1175,144 @@ function yamlEscape(s: string): string {
 }
 
 /**
+ * Translate a Japanese article to English using CF Workers AI.
+ *
+ * Called when lang === "en" and a same-day Japanese article already exists in
+ * the Content Collection.  Uses TOPIC_SELECTION_MODEL (a lightweight CF Workers
+ * AI model) for both metadata and body translation so that no Claude API call
+ * or Tavily search is needed.
+ *
+ * Two separate LLM calls are made:
+ *   1. Metadata (title, summary, tags) — short JSON output, max_tokens 1024
+ *   2. Body (Markdown) — long output, max_tokens 4096
+ *
+ * @param jaArticle  The Japanese article's data + raw Markdown body
+ * @param _date      ISO date string (YYYY-MM-DD) — unused but kept for signature symmetry
+ */
+async function translateArticle(
+  jaArticle: {
+    title: string;
+    summary: string;
+    tags: string[];
+    body: string;
+  },
+  _date: string,
+): Promise<{
+  title: string;
+  summary: string;
+  tags: string[];
+  body: string;
+  selectedTopic: string;
+  selectedEntries: RssEntry[];
+}> {
+  // --- Step T1: Metadata translation ---
+  const metaSystemPrompt =
+    "You are a professional translator. Translate the following Japanese article metadata to English.\n" +
+    'Output valid JSON with keys: "title", "summary", "tags" (array of strings).\n' +
+    "Keep technical terms (API names, model names, company names) as-is.\n" +
+    "The title should be concise (15-50 chars). The summary should be 2-3 sentences.\n" +
+    "Output only the JSON, nothing else.";
+
+  const metaUserPrompt = JSON.stringify({
+    title: jaArticle.title,
+    summary: jaArticle.summary,
+    tags: jaArticle.tags,
+  });
+
+  const metaResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
+    TOPIC_SELECTION_MODEL,
+    {
+      messages: [
+        { role: "system", content: metaSystemPrompt },
+        { role: "user", content: metaUserPrompt },
+      ],
+      max_tokens: 1024,
+      temperature: 0.3,
+    },
+  );
+
+  const metaRaw = extractText(metaResponse)
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+
+  let translatedMeta: { title: string; summary: string; tags: string[] };
+  try {
+    const parsed = JSON.parse(metaRaw);
+    if (
+      typeof parsed.title !== "string" ||
+      typeof parsed.summary !== "string" ||
+      !Array.isArray(parsed.tags) ||
+      !parsed.tags.every((t: unknown) => typeof t === "string")
+    ) {
+      throw new Error("Schema validation failed");
+    }
+    translatedMeta = {
+      title: parsed.title.slice(0, 200),
+      summary: parsed.summary.slice(0, 500),
+      tags: (parsed.tags as string[]).slice(0, 10).map((t) => t.slice(0, 50)),
+    };
+  } catch {
+    // Regex fallback for malformed JSON
+    const titleM = /"title"\s*:\s*"([^"]+)"/.exec(metaRaw);
+    const summaryM = /"summary"\s*:\s*"([^"]+)"/.exec(metaRaw);
+    const tagsM = /"tags"\s*:\s*\[([\s\S]*?)\]/.exec(metaRaw);
+    if (!titleM || !summaryM) {
+      throw new Error(`Translation metadata parse failed. Raw: ${metaRaw.slice(0, 300)}`);
+    }
+    translatedMeta = {
+      title: titleM[1].trim().slice(0, 200),
+      summary: summaryM[1].replace(/,\s*$/, "").trim().slice(0, 500),
+      tags: tagsM
+        ? (tagsM[1].match(/"([^"]+)"/g) ?? [])
+            .map((s) => s.replace(/"/g, "").slice(0, 50))
+            .slice(0, 10)
+        : [],
+    };
+  }
+
+  console.log(`Step T1 metadata translated: title="${translatedMeta.title}"`);
+
+  // --- Step T2: Body translation ---
+  const bodySystemPrompt =
+    "You are a professional translator specializing in technical content.\n" +
+    "Translate the following Japanese Markdown article to English.\n" +
+    "Preserve all Markdown formatting (headings, lists, code blocks, links, bold, etc.) exactly.\n" +
+    "Keep technical terms, API names, model names, URLs, and code snippets as-is.\n" +
+    "Maintain the same paragraph structure and section headings.\n" +
+    "The last section ## まとめ should be translated as ## Summary.\n" +
+    "Output only the translated Markdown, nothing else.";
+
+  const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
+    TOPIC_SELECTION_MODEL,
+    {
+      messages: [
+        { role: "system", content: bodySystemPrompt },
+        { role: "user", content: jaArticle.body },
+      ],
+      max_tokens: 4096,
+      temperature: 0.3,
+    },
+  );
+
+  const translatedBody = stripOuterMarkdownFence(extractText(bodyResponse));
+  if (!translatedBody) {
+    throw new Error("Translation returned empty body");
+  }
+
+  console.log(`Step T2 body translated: ${translatedBody.length} chars`);
+
+  return {
+    ...translatedMeta,
+    body: translatedBody,
+    // selectedTopic and selectedEntries are unused in translation mode;
+    // sources and trustLevel are inherited from the Japanese article instead.
+    selectedTopic: jaArticle.title,
+    selectedEntries: [],
+  };
+}
+
+/**
  * Assemble the full Markdown file content (frontmatter + body).
  */
 function buildMarkdown(
@@ -1297,118 +1435,170 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // --- D1 (retrieval) -------------------------------------------------------
-  let allEntries: RssEntry[] = [];
-  try {
-    const result = await env.DB.prepare(
-      `SELECT source_label, source_url, title, link, summary, published_at
-       FROM rss_entries
-       WHERE published_at >= datetime('now', ?)
-         AND rowid IN (
-           SELECT rowid FROM rss_entries r2
-           WHERE r2.source_label = rss_entries.source_label
-             AND r2.published_at >= datetime('now', ?)
-           ORDER BY r2.published_at DESC
-           LIMIT 2
-         )
-       ORDER BY published_at DESC`,
-    )
-      .bind(`-${RSS_LOOKBACK_DAYS} days`, `-${RSS_LOOKBACK_DAYS} days`)
-      .all();
+  // --- Translation mode check (English articles only) ----------------------
+  // If lang==="en" and a same-day Japanese article already exists in the
+  // Content Collection, we skip D1/Tavily/full-LLM and instead translate the
+  // Japanese article using a lightweight CF Workers AI model.
+  // This significantly reduces cost by avoiding Claude API calls and Tavily searches.
+  //
+  // translationSource is non-null when translation mode is active.
+  type TranslationSource = {
+    title: string;
+    summary: string;
+    tags: string[];
+    body: string;
+    sources: ArticleSource[];
+    trustLevel: "official" | "blog" | "speculative";
+  };
+  let translationSource: TranslationSource | null = null;
 
-    if (result.success && result.results) {
-      allEntries = result.results as unknown as RssEntry[];
-    }
-  } catch (err) {
-    const message = err instanceof Error ? err.message : String(err);
-    return new Response(
-      JSON.stringify({
-        error: `D1 query failed: ${message}`,
-      }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  if (allEntries.length === 0) {
-    return new Response(
-      JSON.stringify({
-        error:
-          "No RSS entries found in D1. Run /api/fetch-rss first to populate the database.",
-      }),
-      { status: 502, headers: { "Content-Type": "application/json" } },
-    );
-  }
-
-  // Cap to MAX_CONTEXT_ENTRIES so that sources and LLM context are always
-  // in sync: the LLM only reads the entries it can reference.
-  let contextEntries = allEntries.slice(0, MAX_CONTEXT_ENTRIES);
-
-  // --- Tavily RAG（オプション）----------------------------------------------
-  // TAVILY_API_KEY が設定されている場合のみ実行。
-  // 失敗時は RSS サマリーのみで続行するため、エラーは警告としてログに残す。
-  let fullTextMap: Map<string, string> | undefined;
-
-  // Tavily API 呼び出し回数を一元管理する予算トラッカー。
-  // ルートハンドラ（Step A/C）と generateWithLLM（Step 0.5）で共有する。
-  const tavilyBudget: TavilyUsageBudget = { searchCalls: 0, extractUrls: 0 };
-
-  if (env.TAVILY_API_KEY) {
+  if (lang === "en") {
     try {
-      // Step A: RSS エントリから検索クエリを生成し、Tavily /search を実行
-      const tavilyQueries = buildTavilyQueries(contextEntries, dateInput);
-      console.log(`Tavily search: ${tavilyQueries.length} queries`);
-
-      const tavilyResults = await tavilySearch(env.TAVILY_API_KEY, tavilyQueries);
-      // 消費した search 回数を記録
-      tavilyBudget.searchCalls += tavilyQueries.length;
-      console.log(`Tavily search returned ${tavilyResults.length} results`);
-
-      // Step B: Tavily 結果を RSS エントリにマージし、URL で重複排除
-      const mergedEntries = mergeWithTavilyResults(contextEntries, tavilyResults);
-      // マージ後も MAX_CONTEXT_ENTRIES 上限を維持
-      contextEntries = mergedEntries.slice(0, MAX_CONTEXT_ENTRIES);
-
-      // Step C: マージ済みエントリの URL に対して Tavily /extract で本文取得
-      // 公式ソースを優先して extract 対象を選択
-      const allUrls = contextEntries.map((e) => e.link);
-      const officialUrls = allUrls.filter(
-        (url) => classifySourceType(url) === "official",
+      const articles = await getCollection("articles");
+      // Match articles whose id equals dateInput (slug = date) and whose lang
+      // is "ja" or unset (the default per content.config.ts schema).
+      const jaArticle = articles.find(
+        (a) => a.id === dateInput && (a.data.lang === "ja" || a.data.lang === undefined),
       );
-      const nonOfficialUrls = allUrls.filter(
-        (url) => classifySourceType(url) !== "official",
-      );
-      // 公式ソースを先頭に並べ、総量上限（TAVILY_MAX_EXTRACT_URLS_TOTAL）の残枠内で extract
-      const extractBudgetForStepC = TAVILY_MAX_EXTRACT_URLS_TOTAL - tavilyBudget.extractUrls;
-      const extractUrls = [
-        ...officialUrls,
-        ...nonOfficialUrls,
-      ].slice(0, Math.min(TAVILY_EXTRACT_MAX_URLS, extractBudgetForStepC));
-
-      console.log(`Tavily extract: ${extractUrls.length} URLs`);
-      const extractResults = await tavilyExtract(env.TAVILY_API_KEY, extractUrls);
-      // 消費した extract URL 数を記録
-      tavilyBudget.extractUrls += extractUrls.length;
-      console.log(`Tavily extract returned ${extractResults.length} results`);
-
-      if (extractResults.length > 0) {
-        // 公式ソース URL のセット（本文割り当て優先度計算に使用）
-        const officialUrlSet = new Set(officialUrls);
-        fullTextMap = buildFullTextMap(extractResults, officialUrlSet);
-        console.log(`Full text map: ${fullTextMap.size} entries`);
+      if (jaArticle) {
+        console.log(`Translation mode: found Japanese article for ${dateInput}, skipping D1/Tavily`);
+        translationSource = {
+          title: jaArticle.data.title,
+          summary: jaArticle.data.summary,
+          tags: jaArticle.data.tags,
+          // body is the raw Markdown string (without frontmatter) provided by
+          // Astro Content Layer's glob loader.
+          body: (jaArticle as unknown as { body?: string }).body ?? "",
+          sources: jaArticle.data.sources as ArticleSource[],
+          trustLevel: jaArticle.data.trustLevel as "official" | "blog" | "speculative",
+        };
+      } else {
+        console.log(
+          `Translation mode: no Japanese article found for ${dateInput}, falling back to full generation`,
+        );
       }
     } catch (err) {
-      // Tavily 失敗時は RSS サマリーのみで続行
       console.warn(
-        `Tavily RAG pipeline failed, falling back to RSS summaries only: ${
+        `Translation mode check failed, falling back to full generation: ${
           err instanceof Error ? err.message : String(err)
         }`,
       );
     }
   }
 
-  console.log(
-    `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${tavilyBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${tavilyBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
-  );
+  // --- D1 (retrieval) — skipped in translation mode -------------------------
+  let contextEntries: RssEntry[] = [];
+  let fullTextMap: Map<string, string> | undefined;
+  const tavilyBudget: TavilyUsageBudget = { searchCalls: 0, extractUrls: 0 };
+
+  if (!translationSource) {
+    let allEntries: RssEntry[] = [];
+    try {
+      const result = await env.DB.prepare(
+        `SELECT source_label, source_url, title, link, summary, published_at
+         FROM rss_entries
+         WHERE published_at >= datetime('now', ?)
+           AND rowid IN (
+             SELECT rowid FROM rss_entries r2
+             WHERE r2.source_label = rss_entries.source_label
+               AND r2.published_at >= datetime('now', ?)
+             ORDER BY r2.published_at DESC
+             LIMIT 2
+           )
+         ORDER BY published_at DESC`,
+      )
+        .bind(`-${RSS_LOOKBACK_DAYS} days`, `-${RSS_LOOKBACK_DAYS} days`)
+        .all();
+
+      if (result.success && result.results) {
+        allEntries = result.results as unknown as RssEntry[];
+      }
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return new Response(
+        JSON.stringify({
+          error: `D1 query failed: ${message}`,
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    if (allEntries.length === 0) {
+      return new Response(
+        JSON.stringify({
+          error:
+            "No RSS entries found in D1. Run /api/fetch-rss first to populate the database.",
+        }),
+        { status: 502, headers: { "Content-Type": "application/json" } },
+      );
+    }
+
+    // Cap to MAX_CONTEXT_ENTRIES so that sources and LLM context are always
+    // in sync: the LLM only reads the entries it can reference.
+    contextEntries = allEntries.slice(0, MAX_CONTEXT_ENTRIES);
+
+    // --- Tavily RAG（オプション）----------------------------------------------
+    // TAVILY_API_KEY が設定されている場合のみ実行。
+    // 失敗時は RSS サマリーのみで続行するため、エラーは警告としてログに残す。
+
+    if (env.TAVILY_API_KEY) {
+      try {
+        // Step A: RSS エントリから検索クエリを生成し、Tavily /search を実行
+        const tavilyQueries = buildTavilyQueries(contextEntries, dateInput);
+        console.log(`Tavily search: ${tavilyQueries.length} queries`);
+
+        const tavilyResults = await tavilySearch(env.TAVILY_API_KEY, tavilyQueries);
+        // 消費した search 回数を記録
+        tavilyBudget.searchCalls += tavilyQueries.length;
+        console.log(`Tavily search returned ${tavilyResults.length} results`);
+
+        // Step B: Tavily 結果を RSS エントリにマージし、URL で重複排除
+        const mergedEntries = mergeWithTavilyResults(contextEntries, tavilyResults);
+        // マージ後も MAX_CONTEXT_ENTRIES 上限を維持
+        contextEntries = mergedEntries.slice(0, MAX_CONTEXT_ENTRIES);
+
+        // Step C: マージ済みエントリの URL に対して Tavily /extract で本文取得
+        // 公式ソースを優先して extract 対象を選択
+        const allUrls = contextEntries.map((e) => e.link);
+        const officialUrls = allUrls.filter(
+          (url) => classifySourceType(url) === "official",
+        );
+        const nonOfficialUrls = allUrls.filter(
+          (url) => classifySourceType(url) !== "official",
+        );
+        // 公式ソースを先頭に並べ、総量上限（TAVILY_MAX_EXTRACT_URLS_TOTAL）の残枠内で extract
+        const extractBudgetForStepC = TAVILY_MAX_EXTRACT_URLS_TOTAL - tavilyBudget.extractUrls;
+        const extractUrls = [
+          ...officialUrls,
+          ...nonOfficialUrls,
+        ].slice(0, Math.min(TAVILY_EXTRACT_MAX_URLS, extractBudgetForStepC));
+
+        console.log(`Tavily extract: ${extractUrls.length} URLs`);
+        const extractResults = await tavilyExtract(env.TAVILY_API_KEY, extractUrls);
+        // 消費した extract URL 数を記録
+        tavilyBudget.extractUrls += extractUrls.length;
+        console.log(`Tavily extract returned ${extractResults.length} results`);
+
+        if (extractResults.length > 0) {
+          // 公式ソース URL のセット（本文割り当て優先度計算に使用）
+          const officialUrlSet = new Set(officialUrls);
+          fullTextMap = buildFullTextMap(extractResults, officialUrlSet);
+          console.log(`Full text map: ${fullTextMap.size} entries`);
+        }
+      } catch (err) {
+        // Tavily 失敗時は RSS サマリーのみで続行
+        console.warn(
+          `Tavily RAG pipeline failed, falling back to RSS summaries only: ${
+            err instanceof Error ? err.message : String(err)
+          }`,
+        );
+      }
+    }
+
+    console.log(
+      `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${tavilyBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${tavilyBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
+    );
+  }
 
   // --- LLM generation -------------------------------------------------------
   let llmResult: {
@@ -1420,20 +1610,34 @@ export const POST: APIRoute = async ({ request }) => {
     selectedEntries: RssEntry[];
   };
   try {
-    const pastArticles = await loadRecentPastArticles(dateInput);
-    llmResult = await generateWithLLM(
-      contextEntries,
-      dateInput,
-      pastArticles,
-      lang,
-      fullTextMap,
-      // tavilyApiKey を渡すことで、トピック選定後の追加検索を有効にする
-      env.TAVILY_API_KEY,
-      // 予算トラッカーを渡すことで Step 0.5 の呼び出しを残予算内に制限する
-      tavilyBudget,
-      // D1 インスタンスを渡してルールベース後処理（Step 2b）を有効にする
-      env.DB,
-    );
+    if (translationSource) {
+      // Translation mode: use lightweight CF Workers AI to translate the
+      // Japanese article — no Claude API call, no Tavily search needed.
+      llmResult = await translateArticle(
+        {
+          title: translationSource.title,
+          summary: translationSource.summary,
+          tags: translationSource.tags,
+          body: translationSource.body,
+        },
+        dateInput,
+      );
+    } else {
+      const pastArticles = await loadRecentPastArticles(dateInput);
+      llmResult = await generateWithLLM(
+        contextEntries,
+        dateInput,
+        pastArticles,
+        lang,
+        fullTextMap,
+        // tavilyApiKey を渡すことで、トピック選定後の追加検索を有効にする
+        env.TAVILY_API_KEY,
+        // 予算トラッカーを渡すことで Step 0.5 の呼び出しを残予算内に制限する
+        tavilyBudget,
+        // D1 インスタンスを渡してルールベース後処理（Step 2b）を有効にする
+        env.DB,
+      );
+    }
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return new Response(
@@ -1444,11 +1648,15 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // --- Extract sources & trust level from selected topic entries -----------
-  // Sources reflect only the entries the LLM actually referenced in Step 0.
-  // If topic selection fell back (parse failure), selectedEntries equals all entries.
-  const sources = extractSources(llmResult.selectedEntries);
-  const trustLevel = deriveTrustLevel(sources);
+  // --- Extract sources & trust level ----------------------------------------
+  // In translation mode: inherit sources and trustLevel from the Japanese article.
+  // In full generation mode: derive from the LLM-selected RSS entries.
+  const sources: ArticleSource[] = translationSource
+    ? translationSource.sources
+    : extractSources(llmResult.selectedEntries);
+  const trustLevel: "official" | "blog" | "speculative" = translationSource
+    ? translationSource.trustLevel
+    : deriveTrustLevel(sources);
 
   // --- Assemble article -----------------------------------------------------
   const filename = lang === "en" ? `${dateInput}.en.md` : `${dateInput}.md`;
