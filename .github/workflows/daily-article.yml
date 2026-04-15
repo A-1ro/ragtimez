@@ -93,7 +93,14 @@ jobs:
 
           # --- English article (optional — failure is a warning, not a job failure) ---
           BEFORE_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | LC_ALL=C sort || true)
-          if npm run generate:article -- --lang en ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"}; then
+          # Pass the Japanese article file to the API as jaArticleContent so that
+          # translation mode is activated immediately, without waiting for a
+          # Cloudflare Pages deploy (which would not be complete at this point in CI).
+          JA_CONTENT_ARGS=()
+          if [ -n "$JA_ARTICLE_FILE" ] && [ -f "$JA_ARTICLE_FILE" ]; then
+            JA_CONTENT_ARGS+=(--ja-content-file "$JA_ARTICLE_FILE")
+          fi
+          if npm run generate:article -- --lang en ${EXTRA_ARGS[@]+"${EXTRA_ARGS[@]}"} ${JA_CONTENT_ARGS[@]+"${JA_CONTENT_ARGS[@]}"}; then
             AFTER_EN=$(find src/content/articles/ -maxdepth 1 -type f -name '*.en.md' -exec md5sum {} + 2>/dev/null | LC_ALL=C sort || true)
             if [ "$BEFORE_EN" != "$AFTER_EN" ]; then
               EN_CHANGED=$(diff <(printf '%s\n' "$BEFORE_EN") <(printf '%s\n' "$AFTER_EN") | grep '^>' | head -1 | awk '{print $3}' || true)
