@@ -18,16 +18,21 @@
  *   npm run generate:article -- --date 2026-04-08 --force
  *   npm run generate:article -- --topics "OpenAI news" "Azure AI updates"
  *   npm run generate:article -- --lang en
+ *   npm run generate:article -- --lang en --ja-content-file src/content/articles/2026-04-08.md
  *
  * Options
- *   --date    YYYY-MM-DD   Article date (default: today UTC)
- *   --force               Overwrite existing file
- *   --topics  ...strings  One or more search topics (space-separated)
- *   --limit   number      AI Search results per topic (default 5)
- *   --lang    ja|en       Article language (default: ja)
+ *   --date             YYYY-MM-DD   Article date (default: today UTC)
+ *   --force                         Overwrite existing file
+ *   --topics  ...strings            One or more search topics (space-separated)
+ *   --limit   number                AI Search results per topic (default 5)
+ *   --lang    ja|en                 Article language (default: ja)
+ *   --ja-content-file  path         Path to same-day Japanese article Markdown file.
+ *                                   When provided, its contents are sent as jaArticleContent
+ *                                   in the request body so the API can use it for translation
+ *                                   mode without requiring a Cloudflare Pages deploy first.
  */
 
-import { writeFileSync, existsSync } from "node:fs";
+import { writeFileSync, readFileSync, existsSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -74,6 +79,7 @@ const dateArg = getFlag("--date");
 const limitArg = getFlag("--limit");
 const topicsArg = getFlagAll("--topics");
 const langArg = getFlag("--lang") ?? "ja";
+const jaContentFileArg = getFlag("--ja-content-file");
 
 const today = new Date().toISOString().slice(0, 10);
 const articleDate = dateArg ?? today;
@@ -128,6 +134,27 @@ interface GeneratedArticle {
 
 const requestBody: Record<string, unknown> = { date: articleDate, lang: langArg };
 if (topicsArg.length > 0) requestBody.topics = topicsArg;
+
+// When --ja-content-file is provided, read the file and pass its contents as
+// jaArticleContent so the API can use translation mode immediately without
+// waiting for a Cloudflare Pages deploy (avoids the deploy race condition in CI).
+if (jaContentFileArg !== undefined) {
+  const jaContentPath = resolve(repoRoot, jaContentFileArg);
+  if (!existsSync(jaContentPath)) {
+    console.error(`Error: --ja-content-file path does not exist: ${jaContentPath}`);
+    process.exit(1);
+  }
+  try {
+    const jaContent = readFileSync(jaContentPath, "utf8");
+    requestBody.jaArticleContent = jaContent;
+    console.log(`  JA content : ${jaContentPath}`);
+  } catch (err) {
+    console.error(`Error: Failed to read --ja-content-file: ${jaContentPath}`);
+    console.error(`  ${String(err)}`);
+    process.exit(1);
+  }
+}
+
 if (limitArg !== undefined) {
   const limit = parseInt(limitArg, 10);
   if (!Number.isFinite(limit) || limit < 1) {
