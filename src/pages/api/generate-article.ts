@@ -48,9 +48,9 @@ const TAVILY_CONTENT_MAX_CHARS = 4000;
 
 /**
  * Tavily 本文を含むコンテキスト全体の最大文字数。
- * 主モデル: Groq llama-3.3-70b-versatile (128k context)
+ * 主モデル: Claude API claude-sonnet-4 (200k context)
  * フォールバック: CF Workers AI Qwen3-30B (128k context)
- * 両モデルとも 128k-token コンテキストウィンドウのため、安全マージンを確保した上限を維持する。
+ * フォールバックモデルの 128k-token コンテキストウィンドウに合わせた安全マージンを維持する。
  * ソースあたり上限引き上げ (2000→4000) に合わせて全体上限も拡大。
  */
 const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 60_000;
@@ -252,11 +252,11 @@ interface RssEntry {
 const TOPIC_SELECTION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 const METADATA_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
-// Issue #151: ドラフト生成は Groq API (llama-3.3-70b-versatile) を主モデルとして使用する。
-// Groq API 未設定時または失敗時のフォールバックとして CF Workers AI の小型モデルを使用する。
+// Issue #160: ドラフト生成は Claude API (claude-sonnet-4) を主モデルとして使用する。
+// ANTHROPIC_API_KEY 未設定時または失敗時のフォールバックとして CF Workers AI の小型モデルを使用する。
 // LLM Editor は廃止し、D1 ベースのルールベース後処理 (postProcess) に置き換えた。
 // これにより確実性の高い辞書置換と禁止フレーズ検出が可能になる。
-// Groq API で大型モデルを使用し、フォールバック時のみ CF Workers AI を使う
+// Claude API で高性能モデルを使用し、フォールバック時のみ CF Workers AI を使う
 const DRAFT_FALLBACK_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8" as const;
 
 /**
@@ -600,7 +600,7 @@ async function postProcess(
  *   0. Topic selection — choose the most technically interesting & actionable topic
  *   [opt] Tavily 追加検索 — 選定トピックを基に追加検索してコンテキストを強化する
  *   1. Metadata (title, summary, tags) — small JSON, reliable
- *   2a. Body draft (Groq API llama-3.3-70b → CF Workers AI fallback) — Markdown deep-dive
+ *   2a. Body draft (Claude API → CF Workers AI fallback) — Markdown deep-dive
  *   2b. Rule-based post-processing (D1 katakana/banned-phrases) — replaces LLM Editor
  *
  * @param entries        コンテキストとして渡す RSS エントリ（Tavily 結果のマージ済み）
@@ -991,7 +991,7 @@ async function generateWithLLM(
     throw new Error(`Metadata missing fields. Raw: ${metaRaw.slice(0, 300)}`);
   }
 
-  // --- Step 2a: Draft body generation (Groq API → CF Workers AI fallback) ---
+  // --- Step 2a: Draft body generation (Claude API → CF Workers AI fallback) ---
   // hasFullText が true の場合、ソース本文を活用してより具体的な記述を指示する
   const fullTextInstruction = hasFullText
     ? "- The context includes full article body text. Use specific details, code examples, " +
@@ -1064,47 +1064,48 @@ async function generateWithLLM(
       "- 著者名・発信組織名: [Source] ブロック中に著者名または発信組織名が含まれている場合は、本文中で明記すること（例: 「Anthropic チームによれば、…」「Microsoft の Azure ブログは… を報告している」）。\n\n" +
       "Output only the Markdown, nothing else.";
 
-  // --- Step 2a: Draft body generation (Groq API → CF Workers AI fallback) ---
-  // Groq API の大型モデル (70B) で指示追従力を向上させる。
-  // フォールバック: Groq API 失敗時は CF Workers AI の小型モデルを使用する。
+  // --- Step 2a: Draft body generation (Claude API → CF Workers AI fallback) ---
+  // Claude API の高性能モデルで指示追従力を向上させる。
+  // フォールバック: Claude API 失敗時は CF Workers AI の小型モデルを使用する。
   let draftBody: string;
 
-  if (env.GROQ_API_KEY) {
+  if (env.ANTHROPIC_API_KEY) {
     try {
-      const groqResponse = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+      const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
           "Content-Type": "application/json",
-          Authorization: `Bearer ${env.GROQ_API_KEY}`,
+          "x-api-key": env.ANTHROPIC_API_KEY,
+          "anthropic-version": "2023-06-01",
         },
         body: JSON.stringify({
-          model: "llama-3.3-70b-versatile",
+          model: "claude-sonnet-4-20250514",
+          max_tokens: 3072,
           messages: [
-            { role: "system", content: draftSystemPrompt },
             { role: "user", content: contextBlock },
           ],
-          max_tokens: 3072,
+          system: draftSystemPrompt,
           temperature: 0.4,
         }),
       });
 
-      if (!groqResponse.ok) {
-        const errorBody = await groqResponse.text().catch(() => "(failed to read body)");
-        throw new Error(`Groq API error: ${groqResponse.status} ${groqResponse.statusText} — ${errorBody.slice(0, 500)}`);
+      if (!anthropicResponse.ok) {
+        const errorBody = await anthropicResponse.text().catch(() => "(failed to read body)");
+        throw new Error(`Anthropic API error: ${anthropicResponse.status} ${anthropicResponse.statusText} — ${errorBody.slice(0, 500)}`);
       }
 
-      const groqData = await groqResponse.json() as {
-        choices: { message: { content: string | null } }[];
+      const anthropicData = await anthropicResponse.json() as {
+        content: { type: string; text: string }[];
       };
-      const groqContent = groqData.choices?.[0]?.message?.content;
-      if (!groqContent) {
-        throw new Error("Groq API returned empty content");
+      const anthropicContent = anthropicData.content?.find(c => c.type === "text")?.text;
+      if (!anthropicContent) {
+        throw new Error("Anthropic API returned empty content");
       }
-      draftBody = groqContent.trim();
-      console.log(`Step 2a draft generated via Groq API: ${draftBody.length} chars`);
+      draftBody = anthropicContent.trim();
+      console.log(`Step 2a draft generated via Anthropic API: ${draftBody.length} chars`);
     } catch (err) {
       console.warn(
-        `Groq API failed, falling back to CF Workers AI: ${err instanceof Error ? err.message : String(err)}`
+        `Anthropic API failed, falling back to CF Workers AI: ${err instanceof Error ? err.message : String(err)}`
       );
       // Fallback to CF Workers AI
       const draftResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
@@ -1122,7 +1123,7 @@ async function generateWithLLM(
       console.log(`Step 2a draft generated via CF Workers AI (fallback): ${draftBody.length} chars`);
     }
   } else {
-    // GROQ_API_KEY 未設定: CF Workers AI を直接使用
+    // ANTHROPIC_API_KEY 未設定: CF Workers AI を直接使用
     const draftResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
       DRAFT_FALLBACK_MODEL,
       {
@@ -1135,7 +1136,7 @@ async function generateWithLLM(
       },
     );
     draftBody = extractText(draftResponse).trim();
-    console.log(`Step 2a draft generated via CF Workers AI (GROQ_API_KEY not set): ${draftBody.length} chars`);
+    console.log(`Step 2a draft generated via CF Workers AI (ANTHROPIC_API_KEY not set): ${draftBody.length} chars`);
   }
 
   if (!draftBody) throw new Error("LLM returned empty draft body");
