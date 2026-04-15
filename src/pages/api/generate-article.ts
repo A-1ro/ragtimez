@@ -694,7 +694,7 @@ async function generateWithLLM(
               "Output ONLY valid JSON with exactly these keys:\n" +
               '- "topic": English description of the chosen topic (1 sentence)\n' +
               '- "reason": why this is the best topic AND how it differs from past articles (1 sentence)\n' +
-              '- "indices": array of 1-based entry numbers that are relevant to this topic\n' +
+              '- "indices": array of 1-based entry numbers that are DIRECTLY relevant to this topic. Only include entries that contain technical details, announcements, or documentation about the chosen topic. Do NOT include tangentially related entries (e.g., general opinion pieces, unrelated product pages from the same company, community forum posts about different features).\n' +
               "Output only the JSON object, no markdown fences.",
           },
           { role: "user", content: avoidBlock + rejectedBlock + contextForSelection },
@@ -1006,6 +1006,16 @@ async function generateWithLLM(
       "You are a senior software engineer writing a technical deep-dive blog post for an audience of engineers.\n" +
       "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
       "Write in English Markdown, starting directly with ## headings.\n\n" +
+      "Practicality rule (HIGHEST PRIORITY):\n" +
+      "- The reader is a working engineer. After reading this article, they must be able to DO something within 5 seconds — run a command, call an API, change a config, or open a specific URL to get started.\n" +
+      "- Every article MUST include at least one of: a CLI command, an API call example, a code snippet, a config change, or a direct link to a getting-started guide.\n" +
+      "- If the source material is only a press release with no technical details, explicitly provide the official documentation URL or getting-started page and state what is NOT yet documented.\n" +
+      "- NEVER write an article that only describes WHAT was announced. Always answer HOW an engineer can use it TODAY.\n\n" +
+      "ONE-TOPIC DEEP-DIVE rules (CRITICAL — violations cause article rejection):\n" +
+      "- Every ## section MUST directly explain the SAME topic. Do NOT dedicate a section to a tangentially related product, community project, or unrelated announcement even if it appears in the [Source] blocks.\n" +
+      "- If a [Source] block covers a different product or topic, extract ONLY the details that directly connect to the main topic. Ignore the rest.\n" +
+      "- FORBIDDEN patterns: a section about 'Community Activities', a section listing other products by the same company, a section about an unrelated open-source project. These are signs of a news roundup, not a deep dive.\n" +
+      "- At least one section MUST explain HOW the technology works — architecture, data flow, API design, runtime model, or implementation pattern. If the source lacks these details, explicitly state: 'The official announcement does not detail the implementation architecture.'\n\n" +
       "Structure guidelines:\n" +
       "- Use 3 to 5 sections with ## headings chosen to fit the topic naturally. Do NOT use a fixed set of section names.\n" +
       "- The last section MUST be a ## Summary with 3-5 bullet points of actionable takeaways.\n" +
@@ -1022,6 +1032,7 @@ async function generateWithLLM(
       "- For each ## section, cite at least one concrete detail from a [Source] block. If no specific detail is available for a section, state explicitly what information is missing.\n" +
       "- When a limitation or caveat exists, state it in the section where it is relevant — not as a separate catch-all section unless there are multiple unrelated caveats.\n" +
       fullTextInstruction +
+      "- If a source mentions new tools, APIs, or frameworks, dedicate at least one paragraph to each explaining what it does and how developers would use it.\n" +
       "- Do NOT turn this into a news roundup covering multiple companies or topics.\n\n" +
       "## Summary rules:\n" +
       "- Each bullet MUST be actionable: start with a verb (evaluate, migrate, adopt, verify) and include a specific tool, library, or technique name.\n" +
@@ -1037,6 +1048,16 @@ async function generateWithLLM(
       "You are a Japanese senior software engineer writing a technical deep-dive blog post for an audience of engineers.\n" +
       "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
       "Write in Japanese Markdown, starting directly with ## headings.\n\n" +
+      "実用性ルール（最優先）:\n" +
+      "- 読者は現役のエンジニアである。記事を読んだ後5秒以内に何かを実践できること — コマンドを実行する、APIを呼ぶ、設定を変える、特定のURLを開いて始める。\n" +
+      "- すべての記事に以下のいずれかを必ず含めること: CLIコマンド、API呼び出し例、コードスニペット、設定変更例、またはGetting Startedページへの直リンク。\n" +
+      "- ソースがプレスリリースのみで技術詳細がない場合、公式ドキュメントURLまたはGetting Startedページを明示し、何がまだ文書化されていないかを述べること。\n" +
+      "- 「何が発表されたか」だけを述べる記事は禁止。必ず「エンジニアが今日どう使えるか」に答えること。\n\n" +
+      "1トピック深掘りルール（必須 — 違反した場合は記事が却下される）:\n" +
+      "- すべての ## セクションが同じ1つのトピックを直接説明すること。関連が薄い製品、コミュニティプロジェクト、別の発表にセクションを割いてはならない。\n" +
+      "- [Source] ブロックに別の製品やトピックが含まれている場合、メインのトピックに直接関係する詳細のみを抽出し、それ以外は無視すること。\n" +
+      "- 禁止パターン: 「コミュニティ活動」セクション、同じ企業の別製品を列挙するセクション、無関係なOSSプロジェクトのセクション。これらはニュースまとめ記事の兆候であり、深掘り記事ではない。\n" +
+      "- 少なくとも1つのセクションで技術の仕組みを説明すること — アーキテクチャ、データフロー、API設計、ランタイムモデル、実装パターンのいずれか。ソースにこれらの詳細がない場合は「公式発表では実装アーキテクチャの詳細は明らかにされていない」と明記すること。\n\n" +
       "Structure guidelines:\n" +
       "- Use 3 to 5 sections with ## headings chosen to fit the topic naturally. Do NOT use a fixed set of section names.\n" +
       "- The last section MUST be ## まとめ with 3-5 bullet points of actionable takeaways for engineers.\n" +
@@ -1047,12 +1068,14 @@ async function generateWithLLM(
       "- Include code blocks (with language tag) for API signatures, CLI commands, config snippets, or code patterns.\n" +
       "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
       "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
+      "- 「〜が可能です」「〜に注目すべきです」「〜が重要です」のような曖昧なフィラー表現を避け、事実を直接述べること。\n" +
       "\n" +
       "Content rules:\n" +
       "- You MUST reference at least 3 specific facts from the provided source texts: product names, version numbers, benchmark numbers, API names, or direct quotes. If a source mentions a specific number or name, USE IT — do not paraphrase into vague generalities.\n" +
       "- For each ## section, cite at least one concrete detail from a [Source] block. If no specific detail is available for a section, state explicitly what information is missing.\n" +
       "- When a limitation or caveat exists, state it in the section where it is relevant — not as a separate catch-all section unless there are multiple unrelated caveats.\n" +
       fullTextInstruction +
+      "- ソースに新しいツール、API、フレームワークが記載されている場合、それぞれに少なくとも1段落を使い、何をするものか・開発者がどう使うかを説明すること。\n" +
       "- Do NOT turn this into a news roundup covering multiple companies or topics.\n\n" +
       "## まとめ rules:\n" +
       "- Each bullet MUST be actionable: start with a verb (評価する, 移行する, 導入する, 確認する) and include a specific tool, library, or technique name.\n" +
