@@ -528,6 +528,49 @@ if (user && env.DB) {
     color: var(--color-muted);
   }
 
+  /* Admin annotation (:::admin-note directive) */
+  .prose :global(.admin-note) {
+    margin: 1.5rem 0;
+    padding: 1rem 1.25rem;
+    background: rgba(249, 158, 11, 0.06);
+    border: 1px solid rgba(249, 158, 11, 0.2);
+    border-left: 4px solid var(--color-amber, #d97706);
+    border-radius: 0.5rem;
+  }
+
+  .prose :global(.admin-note-header) {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.8125rem;
+    font-weight: 700;
+    color: var(--color-amber, #d97706);
+    margin-bottom: 0.5rem;
+    letter-spacing: 0.02em;
+  }
+
+  .prose :global(.admin-note-header)::before {
+    content: "\270F\FE0F";
+  }
+
+  .prose :global(.admin-note-body) {
+    font-size: 0.9375rem;
+    line-height: 1.7;
+    color: var(--color-text);
+  }
+
+  .prose :global(.admin-note-body p:last-child) {
+    margin-bottom: 0;
+  }
+
+  .prose :global(.admin-note-author) {
+    margin-top: 0.5rem;
+    text-align: right;
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    font-style: italic;
+  }
+
   /* Sources section */
   .sources {
     background: var(--color-surface);
