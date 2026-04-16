@@ -91,19 +91,24 @@ export function remarkAdminNote() {
       const newChildren: unknown[] = [headerNode, bodyNode];
 
       if (author) {
+        // Use hast children directly so the <a> tag survives remark-rehype
+        // regardless of how the pipeline handles mdast link nodes inside
+        // nodes with data.hName overrides.
         const authorNode = {
           type: "paragraph" as const,
-          children: [
-            { type: "text" as const, value: "— " },
-            {
-              type: "link" as const,
-              url: `/profile/${author}`,
-              children: [{ type: "text" as const, value: author }],
-            },
-          ],
+          children: [] as unknown[],
           data: {
             hName: "div",
             hProperties: { class: "admin-note-author" },
+            hChildren: [
+              { type: "text" as const, value: "— " },
+              {
+                type: "element" as const,
+                tagName: "a",
+                properties: { href: `/profile/${author}` },
+                children: [{ type: "text" as const, value: author }],
+              },
+            ],
           },
         };
         newChildren.push(authorNode);
