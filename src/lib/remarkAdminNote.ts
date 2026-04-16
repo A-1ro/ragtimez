@@ -93,7 +93,14 @@ export function remarkAdminNote() {
       if (author) {
         const authorNode = {
           type: "paragraph" as const,
-          children: [{ type: "text" as const, value: `— ${author}` }],
+          children: [
+            { type: "text" as const, value: "— " },
+            {
+              type: "link" as const,
+              url: `/profile/${author}`,
+              children: [{ type: "text" as const, value: author }],
+            },
+          ],
           data: {
             hName: "div",
             hProperties: { class: "admin-note-author" },
