@@ -1060,7 +1060,7 @@ async function generateWithLLM(
       "- 少なくとも1つのセクションで技術の仕組みを説明すること — アーキテクチャ、データフロー、API設計、ランタイムモデル、実装パターンのいずれか。ソースにこれらの詳細がない場合は「公式発表では実装アーキテクチャの詳細は明らかにされていない」と明記すること。\n\n" +
       "Structure guidelines:\n" +
       "- Use 3 to 5 sections with ## headings chosen to fit the topic naturally. Do NOT use a fixed set of section names.\n" +
-      "- The last section MUST be ## まとめ with 3-5 bullet points of actionable takeaways for engineers.\n" +
+      "- The last section MUST be ## まとめ — this section answers 'この記事の内容から、技術者は何を実現できるのか'. Write 3-5 bullet points.\n" +
       "- Good section examples: ## 何が変わったか, ## 仕組みの詳細, ## 移行手順, ## パフォーマンス特性, ## 既知の制限 — pick what fits the topic.\n\n" +
       "Formatting rules (strictly enforced):\n" +
       "- Each paragraph MUST be 2-3 sentences maximum. Start a new paragraph rather than extending one.\n" +
@@ -1078,9 +1078,10 @@ async function generateWithLLM(
       "- ソースに新しいツール、API、フレームワークが記載されている場合、それぞれに少なくとも1段落を使い、何をするものか・開発者がどう使うかを説明すること。\n" +
       "- Do NOT turn this into a news roundup covering multiple companies or topics.\n\n" +
       "## まとめ rules:\n" +
-      "- Each bullet MUST be actionable: start with a verb (評価する, 移行する, 導入する, 確認する) and include a specific tool, library, or technique name.\n" +
-      "- BAD: 'メモリ管理は重要です'. GOOD: 'LangChain Deep Agents のハーネス設定を確認し、メモリの永続化先を自社管理のストレージに変更する'.\n" +
-      "- The ## まとめ must contain NEW actionable takeaways, not restatements of earlier paragraphs.\n\n" +
+      "- このセクションの目的は「事実の要約」ではなく「読者が何を実現できるか」を伝えること。読んだ技術者が『自分もやってみよう』と思える具体的なゴールを示す。\n" +
+      "- Each bullet MUST describe a concrete outcome the reader can achieve: '〇〇を使って△△を実現できる', '〇〇を導入することで△△のコストを XX% 削減できる' のように、技術名+実現できること のペアで書く。\n" +
+      "- BAD: 'メモリ管理は重要です'（事実の羅列）. BAD: 'LangChain Deep Agents のハーネス設定を確認する'（作業指示だけで何が実現できるか不明）. GOOD: 'LangChain Deep Agents のハーネス設定でメモリの永続化先を自社ストレージに切り替えれば、セッション間のコンテキスト保持を自社ポリシーで管理できるようになる'.\n" +
+      "- The ## まとめ must contain NEW insights about what becomes possible, not restatements of earlier paragraphs.\n\n" +
       "核心的主張・出典明記ルール（必須 — 守られない場合は記事が却下される）:\n" +
       "- 核心的主張: 各 [Source] ブロックから著者が最も強く主張していることを特定し、その核心的主張を本文中（## まとめ だけでなく本文のどこか）で明示すること。\n" +
       "- 出典 URL: 各 ## セクションの末尾、または該当する記述の直後に、参照した [Source] ブロックの 'Source:' 行の URL を `（出典: <url>）` の形式で記載すること。\n" +
