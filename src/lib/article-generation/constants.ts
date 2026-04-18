@@ -1,0 +1,12 @@
+export const MAX_CONTEXT_ENTRIES = 20;
+export const RSS_LOOKBACK_DAYS = 7;
+export const PAST_ARTICLES_LOOKBACK_DAYS = 14;
+export const TAVILY_EXTRACT_MAX_URLS = 5;
+export const TAVILY_CONTENT_MAX_CHARS = 4000;
+export const TAVILY_CONTEXT_MAX_TOTAL_CHARS = 60_000;
+export const TAVILY_MAX_SEARCH_CALLS = 4;
+export const TAVILY_MAX_EXTRACT_URLS_TOTAL = 8;
+export const SOURCE_QUALITY_THRESHOLD = 2;
+export const SOURCE_QUALITY_MAX_RETRIES = 2;
+export const MAX_TITLE_LENGTH = 200;
+export const MAX_SUMMARY_LENGTH = 1000;
