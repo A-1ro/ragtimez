@@ -10,6 +10,7 @@ import {
   TAVILY_MAX_EXTRACT_URLS_TOTAL,
   TAVILY_MAX_SEARCH_CALLS,
 } from "./constants";
+import type { IResearchEnricher } from "./interfaces";
 import { OFFICIAL_DOMAINS, classifySourceType } from "./sourceMetadata";
 import { sanitizeExternalContent } from "./textUtils";
 import type { RssEntry } from "./types";
@@ -27,7 +28,7 @@ export interface TopicAttempt {
   score: number;
 }
 
-export class ResearchEnricher {
+export class ResearchEnricher implements IResearchEnricher {
   constructor(private readonly searchProvider?: ISearchProvider) {}
 
   async buildInitialResearch(input: {

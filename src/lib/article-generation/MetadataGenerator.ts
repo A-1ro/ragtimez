@@ -1,8 +1,9 @@
+import type { IMetadataGenerator } from "./interfaces";
 import type { ILlmClient } from "../llm/interfaces";
 
 const METADATA_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
-export class MetadataGenerator {
+export class MetadataGenerator implements IMetadataGenerator {
   constructor(private readonly llmClient: ILlmClient) {}
 
   async generate(input: {

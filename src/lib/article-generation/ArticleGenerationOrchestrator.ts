@@ -1,17 +1,21 @@
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
-import type { MetadataGenerator } from "./MetadataGenerator";
-import type { DraftGenerator } from "./DraftGenerator";
-import type { ResearchEnricher, TavilyUsageBudget } from "./ResearchEnricher";
-import type { TopicSelector, RecentArticle } from "./TopicSelector";
+import type {
+  IDraftGenerator,
+  IMetadataGenerator,
+  IResearchEnricher,
+  ITopicSelector,
+} from "./interfaces";
+import type { TavilyUsageBudget } from "./ResearchEnricher";
+import type { RecentArticle } from "./TopicSelector";
 import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
   constructor(
-    private readonly topicSelector: TopicSelector,
-    private readonly researchEnricher: ResearchEnricher,
-    private readonly metadataGenerator: MetadataGenerator,
-    private readonly draftGenerator: DraftGenerator,
+    private readonly topicSelector: ITopicSelector,
+    private readonly researchEnricher: IResearchEnricher,
+    private readonly metadataGenerator: IMetadataGenerator,
+    private readonly draftGenerator: IDraftGenerator,
   ) {}
 
   async generate(input: {
