@@ -4,9 +4,9 @@ import type {
   IDraftGenerator,
   IMetadataGenerator,
   IResearchEnricher,
+  SearchUsageBudget,
   ITopicSelector,
 } from "./interfaces";
-import type { TavilyUsageBudget } from "./ResearchEnricher";
 import type { RecentArticle } from "./TopicSelector";
 import type { RssEntry } from "./types";
 
@@ -24,7 +24,7 @@ export class ArticleGenerationOrchestrator {
     lang: "ja" | "en";
     pastArticles: RecentArticle[];
     fullTextMap?: Map<string, string>;
-    tavilyBudget: TavilyUsageBudget;
+    searchBudget: SearchUsageBudget;
     db?: D1Database;
   }): Promise<{
     title: string;
@@ -57,7 +57,7 @@ export class ArticleGenerationOrchestrator {
         topic: selection.topicSelection.topic,
         selectedEntries: selection.selectedEntries,
         fullTextMap: input.fullTextMap,
-        tavilyBudget: input.tavilyBudget,
+        searchBudget: input.searchBudget,
         attempt,
       });
 

@@ -12,8 +12,9 @@ import {
   TAVILY_MAX_EXTRACT_URLS_TOTAL,
 } from "../../lib/article-generation/constants";
 import { DraftGenerator } from "../../lib/article-generation/DraftGenerator";
+import type { SearchUsageBudget } from "../../lib/article-generation/interfaces";
 import { MetadataGenerator } from "../../lib/article-generation/MetadataGenerator";
-import { ResearchEnricher, type TavilyUsageBudget } from "../../lib/article-generation/ResearchEnricher";
+import { ResearchEnricher } from "../../lib/article-generation/ResearchEnricher";
 import {
   deriveTrustLevel,
   extractSources,
@@ -164,7 +165,7 @@ export const POST: APIRoute = async ({ request }) => {
   // --- D1 (retrieval) — skipped in translation mode -------------------------
   let contextEntries: RssEntry[] = [];
   let fullTextMap: Map<string, string> | undefined;
-  const tavilyBudget: TavilyUsageBudget = { searchCalls: 0, extractUrls: 0 };
+  const searchBudget: SearchUsageBudget = { searchCalls: 0, extractUrls: 0 };
 
   if (!translationSource) {
     let allEntries: RssEntry[] = [];
@@ -222,13 +223,13 @@ export const POST: APIRoute = async ({ request }) => {
     const initialResearch = await researchEnricher.buildInitialResearch({
       entries: contextEntries,
       date: dateInput,
-      tavilyBudget,
+      searchBudget,
     });
     contextEntries = initialResearch.contextEntries;
     fullTextMap = initialResearch.fullTextMap;
 
     console.log(
-      `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${tavilyBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${tavilyBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
+      `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${searchBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${searchBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
     );
   }
 
@@ -264,7 +265,7 @@ export const POST: APIRoute = async ({ request }) => {
         pastArticles,
         lang,
         fullTextMap,
-        tavilyBudget,
+        searchBudget,
         db: env.DB,
       });
     }

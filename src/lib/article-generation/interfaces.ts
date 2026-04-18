@@ -1,10 +1,14 @@
 import type { RssEntry } from "./types";
 import type { RecentArticle, TopicSelection } from "./TopicSelector";
-import type { TavilyUsageBudget } from "./ResearchEnricher";
 import type {
   TranslationResult,
   TranslationSource,
 } from "./TranslationService";
+
+export interface SearchUsageBudget {
+  searchCalls: number;
+  extractUrls: number;
+}
 
 export interface ITopicSelector {
   select(input: {
@@ -19,13 +23,13 @@ export interface IResearchEnricher {
   buildInitialResearch(input: {
     entries: RssEntry[];
     date: string;
-    tavilyBudget: TavilyUsageBudget;
+    searchBudget: SearchUsageBudget;
   }): Promise<{ contextEntries: RssEntry[]; fullTextMap?: Map<string, string> }>;
   enrichSelectedTopic(input: {
     topic: string;
     selectedEntries: RssEntry[];
     fullTextMap?: Map<string, string>;
-    tavilyBudget: TavilyUsageBudget;
+    searchBudget: SearchUsageBudget;
     attempt: number;
   }): Promise<{ selectedEntries: RssEntry[]; fullTextMap?: Map<string, string> }>;
   evaluateSourceQuality(
