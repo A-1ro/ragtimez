@@ -2,6 +2,23 @@ import type { APIRoute } from "astro";
 import { getCollection } from "astro:content";
 import { env } from "cloudflare:workers";
 import { timingSafeEqual } from "../../lib/auth";
+import { buildMarkdown } from "../../lib/article-generation/MarkdownAssembler";
+import { postProcess } from "../../lib/article-generation/PostProcessor";
+import {
+  classifySourceType,
+  deriveTrustLevel,
+  extractSources,
+  OFFICIAL_DOMAINS,
+} from "../../lib/article-generation/sourceMetadata";
+import {
+  sanitizeExternalContent,
+  stripOuterMarkdownFence,
+} from "../../lib/article-generation/textUtils";
+import type {
+  ArticleSource,
+  GeneratedArticle,
+  RssEntry,
+} from "../../lib/article-generation/types";
 import {
   tavilySearch,
   tavilyExtract,
@@ -113,136 +130,9 @@ const MAX_TITLE_LENGTH = 200;
  */
 const MAX_SUMMARY_LENGTH = 1000;
 
-/**
- * 外部取得テキストからプロンプトインジェクション風パターンを除去する。
- * RSSタイトル/要約や Tavily 本文など、LLM プロンプトの user ロールに
- * 挿入される全テキストに適用する。
- */
-function sanitizeExternalContent(text: string): string {
-  // 1. コントロール風プレフィックスを行頭から除去
-  //    - "SYSTEM:", "INSTRUCTION:", "IGNORE", "OVERRIDE", "ASSISTANT:", "USER:", "ADMIN:" 等
-  const controlPrefixPattern =
-    /^(SYSTEM|INSTRUCTION|IGNORE|OVERRIDE|ASSISTANT|USER|ADMIN|PROMPT|COMMAND|EXECUTE|FORGET|DISREGARD)\s*[:：]/gim;
-  let sanitized = text.replace(controlPrefixPattern, "[REMOVED]:");
-
-  // 2. "Ignore previous instructions" や "Ignore all instructions" 等のパターンを無力化
-  const ignorePattern =
-    /\b(ignore|disregard|forget|override|bypass)\s+(all\s+)?(previous|above|prior|earlier|preceding|system|initial)\s+(instructions?|prompts?|rules?|context|guidelines?|constraints?)/gi;
-  sanitized = sanitized.replace(ignorePattern, "[REMOVED]");
-
-  // 3. "You are now..." や "Act as..." といったロール変更の試みを無力化
-  const roleChangePattern =
-    /\b(you\s+are\s+now|from\s+now\s+on|act\s+as|pretend\s+(to\s+be|you\s+are)|you\s+must\s+now|switch\s+to|new\s+role|change\s+your\s+role)\b/gi;
-  sanitized = sanitized.replace(roleChangePattern, "[REMOVED]");
-
-  return sanitized;
-}
-
 // ---------------------------------------------------------------------------
 // Helpers
 // ---------------------------------------------------------------------------
-
-/**
- * Domains that are considered "official" sources.
- * The trust level "official" is assigned when at least one chunk comes from
- * these domains.
- */
-const OFFICIAL_DOMAINS = [
-  "openai.com",
-  "anthropic.com",
-  "deepmind.google",
-  "microsoft.com",
-  "azure.microsoft.com",
-  "learn.microsoft.com",
-  "aws.amazon.com",
-  "ai.meta.com",
-  "huggingface.co",
-  "cloud.google.com",
-  "research.google",
-];
-
-/**
- * Domains that are always classified as "blog" sources (exact hostname match
- * after stripping leading "www." to avoid substring false-positives).
- */
-const BLOG_DOMAINS = [
-  "medium.com",
-  "dev.to",
-  "hashnode.com",
-  "substack.com",
-  "techcrunch.com",
-  "venturebeat.com",
-  "zdnet.com",
-  "infoq.com",
-  "blog.langchain.dev",
-];
-
-function classifySourceType(url: string): "official" | "blog" | "other" {
-  try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
-    for (const domain of OFFICIAL_DOMAINS) {
-      if (hostname === domain || hostname.endsWith(`.${domain}`)) {
-        return "official";
-      }
-    }
-    for (const domain of BLOG_DOMAINS) {
-      if (hostname === domain || hostname.endsWith(`.${domain}`)) {
-        return "blog";
-      }
-    }
-    // Heuristic: treat subdomains with "blog" as the first label as blog sources.
-    if (hostname.split(".")[0] === "blog") {
-      return "blog";
-    }
-    return "other";
-  } catch {
-    return "other";
-  }
-}
-
-function deriveTrustLevel(
-  sources: { type: "official" | "blog" | "other" }[],
-): "official" | "blog" | "speculative" {
-  if (sources.length === 0) return "speculative";
-  if (sources.some((s) => s.type === "official")) return "official";
-  if (sources.some((s) => s.type === "blog")) return "blog";
-  // All sources are "other" (unclassified domains) – treat as speculative.
-  return "speculative";
-}
-
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
-
-interface ArticleSource {
-  url: string;
-  title?: string;
-  type: "official" | "blog" | "other";
-}
-
-interface GeneratedArticle {
-  filename: string;
-  content: string;
-  metadata: {
-    title: string;
-    date: string;
-    summary: string;
-    trustLevel: "official" | "blog" | "speculative";
-    tags: string[];
-    sources: ArticleSource[];
-    draft: boolean;
-    lang: "ja" | "en";
-  };
-}
-
-interface RssEntry {
-  source_label: string;
-  source_url: string;
-  title: string;
-  link: string;
-  summary: string;
-  published_at: string;
-}
 
 // ---------------------------------------------------------------------------
 // Article generation logic
@@ -287,21 +177,6 @@ async function loadRecentPastArticles(
     );
     return [];
   }
-}
-
-/**
- * Build a deduped source list from RSS entries.
- */
-function extractSources(entries: RssEntry[]): ArticleSource[] {
-  const seen = new Set<string>();
-  const sources: ArticleSource[] = [];
-  for (const entry of entries) {
-    if (seen.has(entry.link)) continue;
-    seen.add(entry.link);
-    const type = classifySourceType(entry.link);
-    sources.push({ url: entry.link, title: entry.title, type });
-  }
-  return sources;
 }
 
 /**
@@ -461,27 +336,6 @@ function extractText(response: unknown): string {
 }
 
 /**
- * LLM 出力全体が ```markdown ... ``` や ``` ... ``` の外皮フェンスで
- * 囲まれている場合のみ、それを剥がす。
- *
- * 単純な regex（/^```.../ → /\s*```$/）だと「記事本文がコードブロックで
- * 終わる場合」にその閉じバッククォートが巻き込まれて Markdown が壊れるため、
- * 行単位で「先頭行 = 開きフェンス」かつ「末尾行 = 閉じフェンス」の双方を
- * 満たす時だけ外皮を剥ぐ。
- */
-function stripOuterMarkdownFence(text: string): string {
-  const lines = text.split("\n");
-  if (
-    lines.length >= 2 &&
-    /^```(?:markdown)?\s*$/i.test(lines[0].trim()) &&
-    lines[lines.length - 1].trim() === "```"
-  ) {
-    return lines.slice(1, -1).join("\n").trim();
-  }
-  return text.trim();
-}
-
-/**
  * 選定トピックのソース品質を 0–3 のスコアで評価する。
  * スコアが SOURCE_QUALITY_THRESHOLD 未満の場合、別トピックへの切り替えを推奨する。
  *
@@ -534,64 +388,6 @@ interface TopicAttempt {
   selectedEntries: RssEntry[];
   fullTextMap: Map<string, string> | undefined;
   score: number;
-}
-
-/**
- * D1 ベースのルールベース後処理。
- * LLM Editor を置換し、確実性の高いコードベース処理で記事品質を保証する。
- *
- * 処理内容:
- *   1. カタカナ音写辞書による置換（D1 postprocess_katakana テーブル）
- *   2. 禁止フレーズの検出・警告（D1 postprocess_banned_phrases テーブル）
- *   3. 番号参照出典 [N] を URL に展開
- */
-async function postProcess(
-  body: string,
-  entries: RssEntry[],
-  db: D1Database,
-): Promise<string> {
-  let result = body;
-
-  // 1. D1 からカタカナ辞書を取得して置換
-  const katakana = await db.prepare(
-    "SELECT wrong_form, correct_form FROM postprocess_katakana"
-  ).all<{ wrong_form: string; correct_form: string }>();
-  for (const row of katakana.results) {
-    result = result.replaceAll(row.wrong_form, row.correct_form);
-  }
-
-  // 2. D1 から禁止フレーズを取得して検出
-  const banned = await db.prepare(
-    "SELECT pattern, severity, suggestion FROM postprocess_banned_phrases"
-  ).all<{ pattern: string; severity: string; suggestion: string | null }>();
-  for (const row of banned.results) {
-    try {
-      const regex = new RegExp(row.pattern, "g");
-      if (regex.test(result)) {
-        console.warn(`禁止フレーズ検出 [${row.severity}]: "${row.pattern}"${row.suggestion ? ` → ${row.suggestion}` : ""}`);
-      }
-    } catch (err) {
-      console.warn(`禁止フレーズの正規表現が不正です: "${row.pattern}" — ${err instanceof Error ? err.message : String(err)}`);
-    }
-  }
-
-  // 3. 番号参照出典 [N] を URL に展開（コードフェンス内は除外）
-  // コードフェンス（```...```）で分割し、コードブロック外のみで置換する
-  const segments = result.split(/(```[\s\S]*?```)/g);
-  result = segments.map((segment, i) => {
-    // 奇数インデックスはコードフェンスの中身 → そのまま返す
-    if (i % 2 === 1) return segment;
-    // 偶数インデックスは通常テキスト → 番号参照を展開
-    return segment.replace(/\[(\d+)\]/g, (match, num) => {
-      const idx = parseInt(num, 10) - 1;
-      if (idx >= 0 && idx < entries.length) {
-        return entries[idx].link;
-      }
-      return match;
-    });
-  }).join("");
-
-  return result;
 }
 
 /**
@@ -1191,14 +987,6 @@ async function generateWithLLM(
 }
 
 /**
- * Escape a string value for use inside a YAML double-quoted scalar.
- * Must escape both backslashes (first) and double-quotes to produce valid YAML.
- */
-function yamlEscape(s: string): string {
-  return s.replace(/\\/g, "\\\\").replace(/"/g, '\\"');
-}
-
-/**
  * Parse a raw Markdown article file (with YAML frontmatter) into structured data.
  *
  * This is an intentionally minimal parser that handles the specific frontmatter
@@ -1468,41 +1256,6 @@ async function translateArticle(
     selectedTopic: jaArticle.title,
     selectedEntries: [],
   };
-}
-
-/**
- * Assemble the full Markdown file content (frontmatter + body).
- */
-function buildMarkdown(
-  llm: { title: string; summary: string; tags: string[]; body: string },
-  date: string,
-  sources: ArticleSource[],
-  trustLevel: "official" | "blog" | "speculative",
-  lang: "ja" | "en" = "ja",
-): string {
-  const sourcesYaml = sources
-    .map((s) => {
-      const title = s.title ? `\n    title: "${yamlEscape(s.title)}"` : "";
-      return `  - url: "${yamlEscape(s.url)}"${title}\n    type: "${s.type}"`;
-    })
-    .join("\n");
-  const tagsYaml = llm.tags.map((t) => `  - "${yamlEscape(t)}"`).join("\n");
-
-  return `---
-title: "${yamlEscape(llm.title)}"
-date: ${date}
-summary: "${yamlEscape(llm.summary)}"
-sources:
-${sourcesYaml}
-trustLevel: "${trustLevel}"
-tags:
-${tagsYaml}
-draft: false
-lang: ${lang}
----
-
-${llm.body.trim()}
-`;
 }
 
 // ---------------------------------------------------------------------------
