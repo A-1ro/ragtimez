@@ -1,9 +1,10 @@
+import type { IDraftGenerator } from "./interfaces";
 import type { ILlmClient } from "../llm/interfaces";
 
 const ANTHROPIC_DRAFT_MODEL = "claude-sonnet-4-20250514" as const;
 const WORKERS_AI_DRAFT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8" as const;
 
-export class DraftGenerator {
+export class DraftGenerator implements IDraftGenerator {
   constructor(
     private readonly fallbackClient: ILlmClient,
     private readonly primaryClient?: ILlmClient,

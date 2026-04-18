@@ -10,15 +10,11 @@ import {
   TAVILY_MAX_EXTRACT_URLS_TOTAL,
   TAVILY_MAX_SEARCH_CALLS,
 } from "./constants";
+import type { IResearchEnricher, SearchUsageBudget } from "./interfaces";
 import { OFFICIAL_DOMAINS, classifySourceType } from "./sourceMetadata";
 import { sanitizeExternalContent } from "./textUtils";
 import type { RssEntry } from "./types";
 import type { ExtractResult, ISearchProvider, SearchResult } from "../search/interfaces";
-
-export interface TavilyUsageBudget {
-  searchCalls: number;
-  extractUrls: number;
-}
 
 export interface TopicAttempt {
   topicSelection: { topic: string; reason: string; indices: number[] };
@@ -27,13 +23,13 @@ export interface TopicAttempt {
   score: number;
 }
 
-export class ResearchEnricher {
+export class ResearchEnricher implements IResearchEnricher {
   constructor(private readonly searchProvider?: ISearchProvider) {}
 
   async buildInitialResearch(input: {
     entries: RssEntry[];
     date: string;
-    tavilyBudget: TavilyUsageBudget;
+    searchBudget: SearchUsageBudget;
   }): Promise<{ contextEntries: RssEntry[]; fullTextMap?: Map<string, string> }> {
     let contextEntries = input.entries.slice(0, MAX_CONTEXT_ENTRIES);
     let fullTextMap: Map<string, string> | undefined;
@@ -47,7 +43,7 @@ export class ResearchEnricher {
       console.log(`Tavily search: ${queries.length} queries`);
 
       const searchResults = await this.searchProvider.search(queries);
-      input.tavilyBudget.searchCalls += queries.length;
+      input.searchBudget.searchCalls += queries.length;
       console.log(`Tavily search returned ${searchResults.length} results`);
 
       contextEntries = this.mergeWithTavilyResults(contextEntries, searchResults).slice(
@@ -59,7 +55,7 @@ export class ResearchEnricher {
       const officialUrls = allUrls.filter((url) => classifySourceType(url) === "official");
       const nonOfficialUrls = allUrls.filter((url) => classifySourceType(url) !== "official");
       const extractBudgetRemaining =
-        TAVILY_MAX_EXTRACT_URLS_TOTAL - input.tavilyBudget.extractUrls;
+        TAVILY_MAX_EXTRACT_URLS_TOTAL - input.searchBudget.extractUrls;
       const extractUrls = [...officialUrls, ...nonOfficialUrls].slice(
         0,
         Math.min(TAVILY_EXTRACT_MAX_URLS, extractBudgetRemaining),
@@ -67,7 +63,7 @@ export class ResearchEnricher {
 
       console.log(`Tavily extract: ${extractUrls.length} URLs`);
       const extractResults = await this.searchProvider.extract(extractUrls);
-      input.tavilyBudget.extractUrls += extractUrls.length;
+      input.searchBudget.extractUrls += extractUrls.length;
       console.log(`Tavily extract returned ${extractResults.length} results`);
 
       if (extractResults.length > 0) {
@@ -89,7 +85,7 @@ export class ResearchEnricher {
     topic: string;
     selectedEntries: RssEntry[];
     fullTextMap?: Map<string, string>;
-    tavilyBudget: TavilyUsageBudget;
+    searchBudget: SearchUsageBudget;
     attempt: number;
   }): Promise<{ selectedEntries: RssEntry[]; fullTextMap?: Map<string, string> }> {
     let selectedEntries = input.selectedEntries;
@@ -99,10 +95,10 @@ export class ResearchEnricher {
       return { selectedEntries, fullTextMap: currentFullTextMap };
     }
 
-    const searchBudgetRemaining = TAVILY_MAX_SEARCH_CALLS - input.tavilyBudget.searchCalls;
+    const searchBudgetRemaining = TAVILY_MAX_SEARCH_CALLS - input.searchBudget.searchCalls;
     if (searchBudgetRemaining <= 0) {
       console.log(
-        `Tavily 追加検索スキップ（予算上限到達: searchCalls=${input.tavilyBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}）`,
+        `Tavily 追加検索スキップ（予算上限到達: searchCalls=${input.searchBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}）`,
       );
       return { selectedEntries, fullTextMap: currentFullTextMap };
     }
@@ -135,7 +131,7 @@ export class ResearchEnricher {
         `Tavily search options: depth=advanced, domains=${hasOfficialDomains ? [...entryDomains].join(",") : "(none)"}`,
       );
       const additionalSearchResults = await this.searchProvider.search([docQuery], searchOptions);
-      input.tavilyBudget.searchCalls += 1;
+      input.searchBudget.searchCalls += 1;
       console.log(`Tavily 公式ドキュメント検索結果: ${additionalSearchResults.length} 件`);
 
       if (additionalSearchResults.length === 0) {
@@ -148,10 +144,10 @@ export class ResearchEnricher {
       );
 
       const extractBudgetRemaining =
-        TAVILY_MAX_EXTRACT_URLS_TOTAL - input.tavilyBudget.extractUrls;
+        TAVILY_MAX_EXTRACT_URLS_TOTAL - input.searchBudget.extractUrls;
       if (extractBudgetRemaining <= 0) {
         console.log(
-          `Tavily 追加 extract スキップ（予算上限到達: extractUrls=${input.tavilyBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}）`,
+          `Tavily 追加 extract スキップ（予算上限到達: extractUrls=${input.searchBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}）`,
         );
         return { selectedEntries, fullTextMap: currentFullTextMap };
       }
@@ -161,7 +157,7 @@ export class ResearchEnricher {
         .map((result) => result.url);
       console.log(`Tavily 追加 extract: ${additionalUrls.length} URLs`);
       const additionalExtractResults = await this.searchProvider.extract(additionalUrls);
-      input.tavilyBudget.extractUrls += additionalUrls.length;
+      input.searchBudget.extractUrls += additionalUrls.length;
       console.log(`Tavily 追加 extract 結果: ${additionalExtractResults.length} 件`);
 
       if (additionalExtractResults.length === 0) {

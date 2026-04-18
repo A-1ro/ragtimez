@@ -12,31 +12,23 @@ import {
   TAVILY_MAX_EXTRACT_URLS_TOTAL,
 } from "../../lib/article-generation/constants";
 import { DraftGenerator } from "../../lib/article-generation/DraftGenerator";
+import type { SearchUsageBudget } from "../../lib/article-generation/interfaces";
 import { MetadataGenerator } from "../../lib/article-generation/MetadataGenerator";
-import { ResearchEnricher, type TavilyUsageBudget } from "../../lib/article-generation/ResearchEnricher";
+import { ResearchEnricher } from "../../lib/article-generation/ResearchEnricher";
 import {
   deriveTrustLevel,
   extractSources,
 } from "../../lib/article-generation/sourceMetadata";
 import { TopicSelector, type RecentArticle } from "../../lib/article-generation/TopicSelector";
-import {
-  sanitizeExternalContent,
-  stripOuterMarkdownFence,
-} from "../../lib/article-generation/textUtils";
+import { TranslationService } from "../../lib/article-generation/TranslationService";
 import type {
   ArticleSource,
   GeneratedArticle,
   RssEntry,
 } from "../../lib/article-generation/types";
 import { AnthropicLlmClient } from "../../lib/llm/AnthropicLlmClient";
-import { extractText } from "../../lib/llm/extractText";
 import { WorkersAiLlmClient } from "../../lib/llm/WorkersAiLlmClient";
 import { TavilySearchProvider } from "../../lib/search/TavilySearchProvider";
-
-// ---------------------------------------------------------------------------
-// Security: prompt injection sanitization
-// ---------------------------------------------------------------------------
-const TOPIC_SELECTION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
 
 /**
  * Load recent past articles from the content collection to avoid topic duplication.
@@ -66,278 +58,6 @@ async function loadRecentPastArticles(
     );
     return [];
   }
-}
-
-/**
- * Parse a raw Markdown article file (with YAML frontmatter) into structured data.
- *
- * This is an intentionally minimal parser that handles the specific frontmatter
- * format emitted by this project's article generator — not a general-purpose YAML
- * parser.  It is used to extract Japanese article content from the request body
- * so that translation mode can be activated without waiting for a Cloudflare Pages
- * deploy (which would be required if we relied solely on getCollection()).
- *
- * Expected frontmatter format:
- *   title: "..."
- *   summary: "..."
- *   tags:
- *     - "tag1"
- *     - "tag2"
- *   trustLevel: "official|blog|speculative"
- *   sources:
- *     - url: "..."
- *       title: "..."
- *       type: "official|blog|other"
- *
- * Returns null if the input cannot be parsed as a valid article.
- */
-function parseArticleMarkdown(raw: string): {
-  title: string;
-  summary: string;
-  tags: string[];
-  body: string;
-  sources: ArticleSource[];
-  trustLevel: "official" | "blog" | "speculative";
-} | null {
-  // Split into frontmatter block and body.
-  // The delimiter is "---\n" on line 1 and "---\n" (or "---" at EOF) as close.
-  const match = raw.match(/^---\n([\s\S]*?)\n---\n([\s\S]*)$/);
-  if (!match) return null;
-
-  const frontmatter = match[1];
-  const body = match[2].trim();
-
-  if (!body) return null;
-
-  // title: "..."
-  const titleMatch = frontmatter.match(/^title:\s*"((?:[^"\\]|\\.)*)"\s*$/m);
-  if (!titleMatch) return null;
-  const title = titleMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\');
-
-  // summary: "..."
-  const summaryMatch = frontmatter.match(/^summary:\s*"((?:[^"\\]|\\.)*)"\s*$/m);
-  const summary = summaryMatch
-    ? summaryMatch[1].replace(/\\"/g, '"').replace(/\\\\/g, '\\')
-    : "";
-
-  // trustLevel: "..."
-  const trustMatch = frontmatter.match(/^trustLevel:\s*"([^"]+)"\s*$/m);
-  const rawTrust = trustMatch?.[1] ?? "speculative";
-  const trustLevel: "official" | "blog" | "speculative" =
-    rawTrust === "official" || rawTrust === "blog" ? rawTrust : "speculative";
-
-  // tags:
-  //   - "tag1"
-  //   - "tag2"
-  const tags: string[] = [];
-  const tagsBlockMatch = frontmatter.match(/^tags:\n((?:[ \t]+-[ \t]+"[^"]*"\n?)*)/m);
-  if (tagsBlockMatch) {
-    for (const m of tagsBlockMatch[1].matchAll(/[ \t]+-[ \t]+"([^"]*)"/gm)) {
-      tags.push(m[1]);
-    }
-  }
-
-  // sources:
-  //   - url: "..."
-  //     title: "..."    (optional)
-  //     type: "..."
-  //
-  // Parse line-by-line instead of using a non-greedy regex block capture.
-  // In multiline mode, `$` can match end-of-line, which caused the previous
-  // parser to stop after the first `url:` line and drop the remaining sources.
-  const sources: ArticleSource[] = [];
-  const frontmatterLines = frontmatter.split("\n");
-  const unescapeYamlQuoted = (value: string): string =>
-    value.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
-
-  let inSources = false;
-  let currentSource: ArticleSource | null = null;
-
-  const pushCurrentSource = () => {
-    if (!currentSource) return;
-    sources.push(currentSource);
-    currentSource = null;
-  };
-
-  for (const line of frontmatterLines) {
-    if (!inSources) {
-      if (line === "sources:") inSources = true;
-      continue;
-    }
-
-    if (/^\S/.test(line)) {
-      pushCurrentSource();
-      break;
-    }
-
-    const urlMatch = line.match(/^[ \t]+-[ \t]+url:\s*"((?:[^"\\]|\\.)*)"\s*$/);
-    if (urlMatch) {
-      pushCurrentSource();
-      currentSource = {
-        url: unescapeYamlQuoted(urlMatch[1]),
-        type: "other",
-      };
-      continue;
-    }
-
-    if (!currentSource) continue;
-
-    const titleMatch = line.match(/^[ \t]+title:\s*"((?:[^"\\]|\\.)*)"\s*$/);
-    if (titleMatch) {
-      currentSource.title = unescapeYamlQuoted(titleMatch[1]);
-      continue;
-    }
-
-    const typeMatch = line.match(/^[ \t]+type:\s*"([^"]+)"\s*$/);
-    if (typeMatch) {
-      currentSource.type =
-        typeMatch[1] === "official" || typeMatch[1] === "blog"
-          ? typeMatch[1]
-          : "other";
-    }
-  }
-
-  pushCurrentSource();
-
-  return { title, summary, tags, body, sources, trustLevel };
-}
-
-/**
- * Translate a Japanese article to English using CF Workers AI.
- *
- * Called when lang === "en" and a same-day Japanese article already exists in
- * the Content Collection.  Uses TOPIC_SELECTION_MODEL (a lightweight CF Workers
- * AI model) for both metadata and body translation so that no Claude API call
- * or Tavily search is needed.
- *
- * Two separate LLM calls are made:
- *   1. Metadata (title, summary, tags) — short JSON output, max_tokens 1024
- *   2. Body (Markdown) — long output, max_tokens 4096
- *
- * @param jaArticle  The Japanese article's data + raw Markdown body
- * @param _date      ISO date string (YYYY-MM-DD) — unused but kept for signature symmetry
- */
-async function translateArticle(
-  jaArticle: {
-    title: string;
-    summary: string;
-    tags: string[];
-    body: string;
-  },
-  _date: string,
-): Promise<{
-  title: string;
-  summary: string;
-  tags: string[];
-  body: string;
-  selectedTopic: string;
-  selectedEntries: RssEntry[];
-}> {
-  // --- Step T1: Metadata translation ---
-  const metaSystemPrompt =
-    "You are a professional translator. Translate the following Japanese article metadata to English.\n" +
-    'Output valid JSON with keys: "title", "summary", "tags" (array of strings).\n' +
-    "Keep technical terms (API names, model names, company names) as-is.\n" +
-    "The title should be concise (15-50 chars). The summary should be 2-3 sentences.\n" +
-    "Output only the JSON, nothing else.";
-
-  const metaUserPrompt = JSON.stringify({
-    title: jaArticle.title,
-    summary: jaArticle.summary,
-    tags: jaArticle.tags,
-  });
-
-  const metaResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
-    TOPIC_SELECTION_MODEL,
-    {
-      messages: [
-        { role: "system", content: metaSystemPrompt },
-        { role: "user", content: metaUserPrompt },
-      ],
-      max_tokens: 1024,
-      temperature: 0.3,
-    },
-  );
-
-  const metaRaw = extractText(metaResponse)
-    .replace(/^```(?:json)?\s*/i, "")
-    .replace(/\s*```$/i, "")
-    .trim();
-
-  let translatedMeta: { title: string; summary: string; tags: string[] };
-  try {
-    const parsed = JSON.parse(metaRaw);
-    if (
-      typeof parsed.title !== "string" ||
-      typeof parsed.summary !== "string" ||
-      !Array.isArray(parsed.tags) ||
-      !parsed.tags.every((t: unknown) => typeof t === "string")
-    ) {
-      throw new Error("Schema validation failed");
-    }
-    translatedMeta = {
-      title: parsed.title.slice(0, 200),
-      summary: parsed.summary.slice(0, 500),
-      tags: (parsed.tags as string[]).slice(0, 10).map((t) => t.slice(0, 50)),
-    };
-  } catch {
-    // Regex fallback for malformed JSON
-    const titleM = /"title"\s*:\s*"([^"]+)"/.exec(metaRaw);
-    const summaryM = /"summary"\s*:\s*"([^"]+)"/.exec(metaRaw);
-    const tagsM = /"tags"\s*:\s*\[([\s\S]*?)\]/.exec(metaRaw);
-    if (!titleM || !summaryM) {
-      throw new Error(`Translation metadata parse failed. Raw: ${metaRaw.slice(0, 300)}`);
-    }
-    translatedMeta = {
-      title: titleM[1].trim().slice(0, 200),
-      summary: summaryM[1].replace(/,\s*$/, "").trim().slice(0, 500),
-      tags: tagsM
-        ? (tagsM[1].match(/"([^"]+)"/g) ?? [])
-            .map((s) => s.replace(/"/g, "").slice(0, 50))
-            .slice(0, 10)
-        : [],
-    };
-  }
-
-  console.log(`Step T1 metadata translated: title="${translatedMeta.title}"`);
-
-  // --- Step T2: Body translation ---
-  const bodySystemPrompt =
-    "You are a professional translator specializing in technical content.\n" +
-    "Translate the following Japanese Markdown article to English.\n" +
-    "Preserve all Markdown formatting (headings, lists, code blocks, links, bold, etc.) exactly.\n" +
-    "Keep technical terms, API names, model names, URLs, and code snippets as-is.\n" +
-    "Maintain the same paragraph structure and section headings.\n" +
-    "The last section ## まとめ should be translated as ## Summary.\n" +
-    "Output only the translated Markdown, nothing else.";
-
-  const bodyResponse = await (env.AI.run as (m: string, o: unknown) => Promise<unknown>)(
-    TOPIC_SELECTION_MODEL,
-    {
-      messages: [
-        { role: "system", content: bodySystemPrompt },
-        { role: "user", content: jaArticle.body },
-      ],
-      max_tokens: 4096,
-      temperature: 0.3,
-    },
-  );
-
-  const translatedBody = stripOuterMarkdownFence(extractText(bodyResponse));
-  if (!translatedBody) {
-    throw new Error("Translation returned empty body");
-  }
-
-  console.log(`Step T2 body translated: ${translatedBody.length} chars`);
-
-  return {
-    ...translatedMeta,
-    body: translatedBody,
-    // selectedTopic and selectedEntries are unused in translation mode;
-    // sources and trustLevel are inherited from the Japanese article instead.
-    selectedTopic: jaArticle.title,
-    selectedEntries: [],
-  };
 }
 
 // ---------------------------------------------------------------------------
@@ -435,95 +155,17 @@ export const POST: APIRoute = async ({ request }) => {
     );
   }
 
-  // --- Translation mode check (English articles only) ----------------------
-  // If lang==="en" and a same-day Japanese article is available, we skip
-  // D1/Tavily/full-LLM and instead translate it using a lightweight CF Workers
-  // AI model.  This significantly reduces cost.
-  //
-  // Two sources are tried in order of preference:
-  //   1. jaArticleContent in the request body — avoids the Cloudflare Pages
-  //      deploy race condition that occurs in daily-article.yml (the English
-  //      generation call happens before the JP article's commit is deployed).
-  //   2. Content Collection (getCollection) — for manual runs or any caller
-  //      that did not include jaArticleContent in the request.
-  //
-  // translationSource is non-null when translation mode is active.
-  type TranslationSource = {
-    title: string;
-    summary: string;
-    tags: string[];
-    body: string;
-    sources: ArticleSource[];
-    trustLevel: "official" | "blog" | "speculative";
-  };
-  let translationSource: TranslationSource | null = null;
-
-  if (lang === "en") {
-    // --- Priority 1: jaArticleContent from request body ---
-    const jaArticleContent =
-      typeof body.jaArticleContent === "string" ? body.jaArticleContent.trim() : "";
-    if (jaArticleContent) {
-      try {
-        const parsed = parseArticleMarkdown(jaArticleContent);
-        if (parsed) {
-          console.log(`Translation mode: using jaArticleContent from request body`);
-          translationSource = parsed;
-        } else {
-          console.warn(
-            `Translation mode: failed to parse jaArticleContent from request body, trying Content Collection`,
-          );
-        }
-      } catch (err) {
-        console.warn(
-          `Translation mode: jaArticleContent parse error, trying Content Collection: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-
-    // --- Priority 2: Content Collection (for manual runs or legacy callers) ---
-    if (!translationSource) {
-      try {
-        const articles = await getCollection("articles");
-        // Match articles whose id equals dateInput (slug = date) and whose lang
-        // is "ja" or unset (the default per content.config.ts schema).
-        const jaArticle = articles.find(
-          (a) => a.id === dateInput && (a.data.lang === "ja" || a.data.lang === undefined),
-        );
-        if (jaArticle) {
-          console.log(
-            `Translation mode: found Japanese article in Content Collection for ${dateInput}, skipping D1/Tavily`,
-          );
-          translationSource = {
-            title: jaArticle.data.title,
-            summary: jaArticle.data.summary,
-            tags: jaArticle.data.tags,
-            // body is the raw Markdown string (without frontmatter) provided by
-            // Astro Content Layer's glob loader.
-            body: (jaArticle as unknown as { body?: string }).body ?? "",
-            sources: jaArticle.data.sources as ArticleSource[],
-            trustLevel: jaArticle.data.trustLevel as "official" | "blog" | "speculative",
-          };
-        } else {
-          console.log(
-            `Translation mode: no Japanese article found for ${dateInput}, falling back to full generation`,
-          );
-        }
-      } catch (err) {
-        console.warn(
-          `Translation mode check failed, falling back to full generation: ${
-            err instanceof Error ? err.message : String(err)
-          }`,
-        );
-      }
-    }
-  }
+  const translationService = new TranslationService(env.AI);
+  const translationSource = await translationService.resolveTranslationSource({
+    date: dateInput,
+    lang,
+    jaArticleContent: typeof body.jaArticleContent === "string" ? body.jaArticleContent : undefined,
+  });
 
   // --- D1 (retrieval) — skipped in translation mode -------------------------
   let contextEntries: RssEntry[] = [];
   let fullTextMap: Map<string, string> | undefined;
-  const tavilyBudget: TavilyUsageBudget = { searchCalls: 0, extractUrls: 0 };
+  const searchBudget: SearchUsageBudget = { searchCalls: 0, extractUrls: 0 };
 
   if (!translationSource) {
     let allEntries: RssEntry[] = [];
@@ -581,13 +223,13 @@ export const POST: APIRoute = async ({ request }) => {
     const initialResearch = await researchEnricher.buildInitialResearch({
       entries: contextEntries,
       date: dateInput,
-      tavilyBudget,
+      searchBudget,
     });
     contextEntries = initialResearch.contextEntries;
     fullTextMap = initialResearch.fullTextMap;
 
     console.log(
-      `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${tavilyBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${tavilyBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
+      `Tavily 予算消費（ルートハンドラ完了時）: searchCalls=${searchBudget.searchCalls}/${TAVILY_MAX_SEARCH_CALLS}, extractUrls=${searchBudget.extractUrls}/${TAVILY_MAX_EXTRACT_URLS_TOTAL}`,
     );
   }
 
@@ -602,17 +244,7 @@ export const POST: APIRoute = async ({ request }) => {
   };
   try {
     if (translationSource) {
-      // Translation mode: use lightweight CF Workers AI to translate the
-      // Japanese article — no Claude API call, no Tavily search needed.
-      llmResult = await translateArticle(
-        {
-          title: translationSource.title,
-          summary: translationSource.summary,
-          tags: translationSource.tags,
-          body: translationSource.body,
-        },
-        dateInput,
-      );
+      llmResult = await translationService.translateArticle(translationSource, dateInput);
     } else {
       const pastArticles = await loadRecentPastArticles(dateInput);
       const workersAiClient = new WorkersAiLlmClient(env.AI);
@@ -633,7 +265,7 @@ export const POST: APIRoute = async ({ request }) => {
         pastArticles,
         lang,
         fullTextMap,
-        tavilyBudget,
+        searchBudget,
         db: env.DB,
       });
     }

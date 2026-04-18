@@ -1,17 +1,21 @@
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
-import type { MetadataGenerator } from "./MetadataGenerator";
-import type { DraftGenerator } from "./DraftGenerator";
-import type { ResearchEnricher, TavilyUsageBudget } from "./ResearchEnricher";
-import type { TopicSelector, RecentArticle } from "./TopicSelector";
+import type {
+  IDraftGenerator,
+  IMetadataGenerator,
+  IResearchEnricher,
+  SearchUsageBudget,
+  ITopicSelector,
+} from "./interfaces";
+import type { RecentArticle } from "./TopicSelector";
 import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
   constructor(
-    private readonly topicSelector: TopicSelector,
-    private readonly researchEnricher: ResearchEnricher,
-    private readonly metadataGenerator: MetadataGenerator,
-    private readonly draftGenerator: DraftGenerator,
+    private readonly topicSelector: ITopicSelector,
+    private readonly researchEnricher: IResearchEnricher,
+    private readonly metadataGenerator: IMetadataGenerator,
+    private readonly draftGenerator: IDraftGenerator,
   ) {}
 
   async generate(input: {
@@ -20,7 +24,7 @@ export class ArticleGenerationOrchestrator {
     lang: "ja" | "en";
     pastArticles: RecentArticle[];
     fullTextMap?: Map<string, string>;
-    tavilyBudget: TavilyUsageBudget;
+    searchBudget: SearchUsageBudget;
     db?: D1Database;
   }): Promise<{
     title: string;
@@ -53,7 +57,7 @@ export class ArticleGenerationOrchestrator {
         topic: selection.topicSelection.topic,
         selectedEntries: selection.selectedEntries,
         fullTextMap: input.fullTextMap,
-        tavilyBudget: input.tavilyBudget,
+        searchBudget: input.searchBudget,
         attempt,
       });
 

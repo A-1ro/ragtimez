@@ -2,6 +2,7 @@ import {
   MAX_TITLE_LENGTH,
   PAST_ARTICLES_LOOKBACK_DAYS,
 } from "./constants";
+import type { ITopicSelector } from "./interfaces";
 import { sanitizeExternalContent } from "./textUtils";
 import type { RssEntry } from "./types";
 import type { ILlmClient } from "../llm/interfaces";
@@ -20,7 +21,7 @@ export interface TopicSelection {
   indices: number[];
 }
 
-export class TopicSelector {
+export class TopicSelector implements ITopicSelector {
   constructor(private readonly llmClient: ILlmClient) {}
 
   async select(input: {
