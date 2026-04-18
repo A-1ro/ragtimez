@@ -1272,32 +1272,62 @@ function parseArticleMarkdown(raw: string): {
   //     title: "..."    (optional)
   //     type: "..."
   //
-  // Each source block starts at "  - url:" and extends until the next "  - url:" or
-  // until the end of the frontmatter.  We split on "  - url:" to get individual blocks.
+  // Parse line-by-line instead of using a non-greedy regex block capture.
+  // In multiline mode, `$` can match end-of-line, which caused the previous
+  // parser to stop after the first `url:` line and drop the remaining sources.
   const sources: ArticleSource[] = [];
-  const sourcesAreaMatch = frontmatter.match(/^sources:\n([\s\S]*?)(?=\n\w|$)/m);
-  if (sourcesAreaMatch) {
-    // Re-attach the stripped "url:" prefix by splitting on the list item marker.
-    const sourceArea = sourcesAreaMatch[1];
-    // Each list item starts with optional whitespace + "- url:"
-    const parts = sourceArea.split(/\n?[ \t]+-[ \t]+(?=url:)/);
-    for (const part of parts) {
-      const trimmed = part.trim();
-      if (!trimmed) continue;
-      const urlM = trimmed.match(/^url:\s*"([^"]+)"/m);
-      if (!urlM) continue;
-      const titleM = trimmed.match(/^title:\s*"([^"]*)"/m);
-      const typeM = trimmed.match(/^type:\s*"([^"]+)"/m);
-      const rawType = typeM?.[1] ?? "other";
-      const sourceType: "official" | "blog" | "other" =
-        rawType === "official" || rawType === "blog" ? rawType : "other";
-      sources.push({
-        url: urlM[1],
-        ...(titleM ? { title: titleM[1] } : {}),
-        type: sourceType,
-      });
+  const frontmatterLines = frontmatter.split("\n");
+  const unescapeYamlQuoted = (value: string): string =>
+    value.replace(/\\"/g, '"').replace(/\\\\/g, "\\");
+
+  let inSources = false;
+  let currentSource: ArticleSource | null = null;
+
+  const pushCurrentSource = () => {
+    if (!currentSource) return;
+    sources.push(currentSource);
+    currentSource = null;
+  };
+
+  for (const line of frontmatterLines) {
+    if (!inSources) {
+      if (line === "sources:") inSources = true;
+      continue;
+    }
+
+    if (/^\S/.test(line)) {
+      pushCurrentSource();
+      break;
+    }
+
+    const urlMatch = line.match(/^[ \t]+-[ \t]+url:\s*"((?:[^"\\]|\\.)*)"\s*$/);
+    if (urlMatch) {
+      pushCurrentSource();
+      currentSource = {
+        url: unescapeYamlQuoted(urlMatch[1]),
+        type: "other",
+      };
+      continue;
+    }
+
+    if (!currentSource) continue;
+
+    const titleMatch = line.match(/^[ \t]+title:\s*"((?:[^"\\]|\\.)*)"\s*$/);
+    if (titleMatch) {
+      currentSource.title = unescapeYamlQuoted(titleMatch[1]);
+      continue;
+    }
+
+    const typeMatch = line.match(/^[ \t]+type:\s*"([^"]+)"\s*$/);
+    if (typeMatch) {
+      currentSource.type =
+        typeMatch[1] === "official" || typeMatch[1] === "blog"
+          ? typeMatch[1]
+          : "other";
     }
   }
+
+  pushCurrentSource();
 
   return { title, summary, tags, body, sources, trustLevel };
 }
