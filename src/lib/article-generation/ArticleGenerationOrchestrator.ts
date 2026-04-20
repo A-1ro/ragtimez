@@ -8,6 +8,7 @@ import type {
   ITopicSelector,
 } from "./interfaces";
 import type { RecentArticle } from "./TopicSelector";
+import { checkTopicDuplication } from "./topicDeduplication";
 import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
@@ -53,6 +54,20 @@ export class ArticleGenerationOrchestrator {
         hasFullTextInitial,
       });
 
+      // Programmatic deduplication check (before expensive enrichment)
+      const dedup = checkTopicDuplication(
+        selection.selectedEntries,
+        input.pastArticles,
+      );
+      if (dedup.isDuplicate) {
+        console.log(
+          `トピック重複検出（試行 ${attempt + 1}/${maxAttempts}）: "${selection.topicSelection.topic}" ↔ ` +
+          `"${dedup.matchedArticle?.title}" (URL重複率=${dedup.urlOverlapRatio.toFixed(2)})`,
+        );
+        rejectedTopics.push(selection.topicSelection.topic);
+        continue;
+      }
+
       const enriched = await this.researchEnricher.enrichSelectedTopic({
         topic: selection.topicSelection.topic,
         selectedEntries: selection.selectedEntries,
@@ -89,6 +104,35 @@ export class ArticleGenerationOrchestrator {
         `トピック却下（score ${quality.score} < ${SOURCE_QUALITY_THRESHOLD}）: "${selection.topicSelection.topic}"`,
       );
       rejectedTopics.push(selection.topicSelection.topic);
+    }
+
+    // Fallback: if every attempt was rejected by dedup, run one final attempt
+    // without the dedup check to guarantee an article is always produced.
+    if (!bestAttempt) {
+      console.warn("全試行がトピック重複で却下。重複チェックなしで最終試行を実行します。");
+      const lastSelection = await this.topicSelector.select({
+        entries: input.entries,
+        pastArticles: input.pastArticles,
+        rejectedTopics: [],
+        hasFullTextInitial,
+      });
+      const enriched = await this.researchEnricher.enrichSelectedTopic({
+        topic: lastSelection.topicSelection.topic,
+        selectedEntries: lastSelection.selectedEntries,
+        fullTextMap: input.fullTextMap,
+        searchBudget: input.searchBudget,
+        attempt: maxAttempts,
+      });
+      const quality = this.researchEnricher.evaluateSourceQuality(
+        enriched.selectedEntries,
+        enriched.fullTextMap,
+      );
+      bestAttempt = {
+        topicSelection: lastSelection.topicSelection,
+        selectedEntries: enriched.selectedEntries,
+        fullTextMap: enriched.fullTextMap,
+        score: quality.score,
+      };
     }
 
     const finalAttempt = bestAttempt!;

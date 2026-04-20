@@ -49,6 +49,7 @@ async function loadRecentPastArticles(
           entry.data.date instanceof Date
             ? entry.data.date.toISOString().slice(0, 10)
             : String(entry.data.date),
+        sourceUrls: (entry.data.sources ?? []).map((s: { url: string }) => s.url),
       }))
       .filter((a) => new Date(a.date) >= cutoff)
       .sort((a, b) => (a.date < b.date ? 1 : -1));

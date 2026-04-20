@@ -13,6 +13,7 @@ export interface RecentArticle {
   title: string;
   tags: string[];
   date: string;
+  sourceUrls: string[];  // source URLs from article frontmatter
 }
 
 export interface TopicSelection {
