@@ -8,7 +8,7 @@ import type {
   ITopicSelector,
 } from "./interfaces";
 import type { RecentArticle } from "./TopicSelector";
-import { checkTopicDuplication } from "./topicDeduplication";
+import { checkTopicDuplication, normalizeUrl } from "./topicDeduplication";
 import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
@@ -46,9 +46,22 @@ export class ArticleGenerationOrchestrator {
     const hasFullTextInitial = input.fullTextMap !== undefined && input.fullTextMap.size > 0;
     const maxAttempts = SOURCE_QUALITY_MAX_RETRIES + 1;
 
+    // Pre-filter RSS entries: exclude entries whose URL already appears in a past article's sources.
+    // This reduces the chance of the LLM topic selector picking up stale entries.
+    const pastSourceUrls = new Set(
+      input.pastArticles.flatMap((a) => a.sourceUrls.map(normalizeUrl)),
+    );
+    const filteredEntries = input.entries.filter(
+      (e) => !pastSourceUrls.has(normalizeUrl(e.link)),
+    );
+    const effectiveEntries = filteredEntries.length >= 3 ? filteredEntries : input.entries;
+    console.log(
+      `RSS事前フィルタ: ${input.entries.length}件中${filteredEntries.length}件が未使用`,
+    );
+
     for (let attempt = 0; attempt < maxAttempts; attempt++) {
       const selection = await this.topicSelector.select({
-        entries: input.entries,
+        entries: effectiveEntries,
         pastArticles: input.pastArticles,
         rejectedTopics,
         hasFullTextInitial,
@@ -58,11 +71,12 @@ export class ArticleGenerationOrchestrator {
       const dedup = checkTopicDuplication(
         selection.selectedEntries,
         input.pastArticles,
+        selection.topicSelection.topic,
       );
       if (dedup.isDuplicate) {
         console.log(
           `トピック重複検出（試行 ${attempt + 1}/${maxAttempts}）: "${selection.topicSelection.topic}" ↔ ` +
-          `"${dedup.matchedArticle?.title}" (URL重複率=${dedup.urlOverlapRatio.toFixed(2)})`,
+          `"${dedup.matchedArticle?.title}" (URL重複率=${dedup.urlOverlapRatio.toFixed(2)}, タグ類似度=${dedup.tagOverlapRatio.toFixed(2)})`,
         );
         rejectedTopics.push(selection.topicSelection.topic);
         continue;
@@ -111,7 +125,7 @@ export class ArticleGenerationOrchestrator {
     if (!bestAttempt) {
       console.warn("全試行がトピック重複で却下。重複チェックなしで最終試行を実行します。");
       const lastSelection = await this.topicSelector.select({
-        entries: input.entries,
+        entries: effectiveEntries,
         pastArticles: input.pastArticles,
         rejectedTopics: [],
         hasFullTextInitial,
