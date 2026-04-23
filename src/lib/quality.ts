@@ -28,10 +28,10 @@
  * Total = clamp(sources_score + official_score + trust_score + notes_adjustment, 0, 100)
  *
  * Grade thresholds:
- *   A  ≥ 85
- *   B  ≥ 70
- *   C  ≥ 55
- *   D  < 55
+ *   A  ≥ 75
+ *   B  ≥ 60
+ *   C  ≥ 45
+ *   D  < 45
  *
  * @example
  * // Official article with 5 sources (3 official), 0 notes:
@@ -39,7 +39,7 @@
  * //   official_score     = 30 * (3/5) = 18.0
  * //   trust_score        = 20 (official)
  * //   notes_adjustment   = 0
- * //   total ≈ 67 → grade C
+ * //   total ≈ 67 → grade B
  * computeQualityScore({
  *   sourceCount: 5,
  *   officialSourceCount: 3,
@@ -47,7 +47,7 @@
  *   supplementCount: 0,
  *   correctionCount: 0,
  * })
- * // → { score: 67, grade: "C", breakdown: { sources: 28.5, officialRatio: 18, trustLevel: 20, notesAdjustment: 0, sourceCount: 5, officialSourceCount: 3 } }
+ * // → { score: 67, grade: "B", breakdown: { sources: 28.5, officialRatio: 18, trustLevel: 20, notesAdjustment: 0, sourceCount: 5, officialSourceCount: 3 } }
  */
 
 export type QualityInputs = {
@@ -166,7 +166,7 @@ export function computeQualityScore(inputs: QualityInputs): QualityScore {
   const score = Math.max(0, Math.min(100, Math.round(raw)));
 
   const grade: QualityScore["grade"] =
-    score >= 85 ? "A" : score >= 70 ? "B" : score >= 55 ? "C" : "D";
+    score >= 75 ? "A" : score >= 60 ? "B" : score >= 45 ? "C" : "D";
 
   return {
     score,
