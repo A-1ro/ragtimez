@@ -27,10 +27,67 @@ interface TextNode {
   value: string;
 }
 
+interface LinkNode {
+  type: "link";
+  url: string;
+  title: null;
+  children: TextNode[];
+}
+
 interface DirectiveChild {
   type: string;
   data?: { directiveLabel?: boolean };
-  children?: TextNode[];
+  children?: (TextNode | LinkNode | DirectiveChild)[];
+}
+
+// Split a text value by bare URLs and return a mixed array of text/link nodes.
+const URL_RE = /(https?:\/\/[^\s\])['"<>]+)/g;
+
+function splitTextByUrls(value: string): (TextNode | LinkNode)[] {
+  const parts: (TextNode | LinkNode)[] = [];
+  let last = 0;
+  let match: RegExpExecArray | null;
+  URL_RE.lastIndex = 0;
+  while ((match = URL_RE.exec(value)) !== null) {
+    if (match.index > last) {
+      parts.push({ type: "text", value: value.slice(last, match.index) });
+    }
+    parts.push({
+      type: "link",
+      url: match[1],
+      title: null,
+      children: [{ type: "text", value: match[1] }],
+    });
+    last = match.index + match[1].length;
+  }
+  if (last < value.length) {
+    parts.push({ type: "text", value: value.slice(last) });
+  }
+  return parts.length > 0 ? parts : [{ type: "text", value }];
+}
+
+// Walk body children and convert bare URL text nodes to link nodes.
+// This handles cases where remark-gfm does not autolink URLs inside
+// container directive bodies.
+function autolinkBodyUrls(nodes: unknown[]): void {
+  for (const node of nodes) {
+    const n = node as DirectiveChild;
+    if (!n.children) continue;
+    // Process inline children of paragraphs
+    if (n.type === "paragraph") {
+      const next: (TextNode | LinkNode | DirectiveChild)[] = [];
+      for (const child of n.children) {
+        if (child.type === "text" && "value" in child) {
+          next.push(...splitTextByUrls((child as TextNode).value));
+        } else {
+          next.push(child);
+        }
+      }
+      n.children = next;
+    } else {
+      autolinkBodyUrls(n.children as unknown[]);
+    }
+  }
 }
 
 interface DirectiveNode {
@@ -60,11 +117,17 @@ export function remarkAdminNote() {
 
       for (const child of d.children) {
         if (child.data?.directiveLabel && child.children?.length) {
-          author = child.children.map((c) => c.value).join("");
+          author = child.children
+            .filter((c): c is TextNode => c.type === "text")
+            .map((c) => c.value)
+            .join("");
         } else {
           bodyChildren.push(child);
         }
       }
+
+      // Convert bare URLs in body text nodes to link nodes.
+      autolinkBodyUrls(bodyChildren);
 
       // Wrap body children in a div
       const bodyNode = {

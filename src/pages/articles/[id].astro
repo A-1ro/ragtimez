@@ -559,8 +559,23 @@ if (user && env.DB) {
     color: var(--color-text);
   }
 
+  .prose :global(.admin-note-body p) {
+    white-space: pre-line;
+  }
+
   .prose :global(.admin-note-body p:last-child) {
     margin-bottom: 0;
+  }
+
+  .prose :global(.admin-note-body a) {
+    color: var(--color-accent);
+    text-decoration: underline;
+    text-underline-offset: 2px;
+    word-break: break-all;
+  }
+
+  .prose :global(.admin-note-body a:hover) {
+    color: var(--color-accent-hover);
   }
 
   .prose :global(.admin-note-author) {

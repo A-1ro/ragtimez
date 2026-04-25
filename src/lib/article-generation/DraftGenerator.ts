@@ -16,8 +16,8 @@ export class DraftGenerator implements IDraftGenerator {
     hasFullText: boolean;
   }): Promise<string> {
     const fullTextInstruction = input.hasFullText
-      ? "- The context includes full article body text. Use specific details, code examples, version numbers, API signatures, and benchmarks from the source text.\n"
-      : "- The context contains only article summaries. Be explicit when you lack technical detail, and avoid fabricating specifics.\n";
+      ? "- The context includes full article body text. Use specific details, version numbers, API signatures, and benchmarks from the source text. Include code examples ONLY if they appear verbatim in the source — do NOT reconstruct or infer code that is not explicitly present.\n"
+      : "- The context contains only article summaries. Be explicit when you lack technical detail. Do NOT write code blocks, API signatures, or SDK class names — none of these can be verified from summaries alone.\n";
 
     const system =
       input.lang === "en"
@@ -27,7 +27,8 @@ export class DraftGenerator implements IDraftGenerator {
           "Write in English Markdown, starting directly with ## headings.\n\n" +
           "Practicality rule (HIGHEST PRIORITY):\n" +
           "- The reader is a working engineer. After reading this article, they must be able to DO something within 5 seconds — run a command, call an API, change a config, or open a specific URL to get started.\n" +
-          "- Every article MUST include at least one of: a CLI command, an API call example, a code snippet, a config change, or a direct link to a getting-started guide.\n" +
+          "- ANTI-HALLUCINATION (CRITICAL): NEVER fabricate SDK class names, method names, API endpoints, configuration keys, or code examples that do NOT appear verbatim in the [Source] blocks. Inventing plausible-sounding but unverified code is strictly forbidden and causes article rejection.\n" +
+          "- If the [Source] blocks contain actual code examples or CLI commands, include them. If they do not, use a direct link to the official documentation or getting-started guide instead — this is equally valid and preferable to invented code.\n" +
           "- If the source material is only a press release with no technical details, explicitly provide the official documentation URL or getting-started page and state what is NOT yet documented.\n" +
           "- NEVER write an article that only describes WHAT was announced. Always answer HOW an engineer can use it TODAY.\n\n" +
           "ONE-TOPIC DEEP-DIVE rules (CRITICAL — violations cause article rejection):\n" +
@@ -42,7 +43,7 @@ export class DraftGenerator implements IDraftGenerator {
           "Formatting rules (strictly enforced):\n" +
           "- Each paragraph MUST be 2-3 sentences maximum. Start a new paragraph rather than extending one.\n" +
           "- Use bullet lists or numbered lists whenever presenting multiple items, steps, or options.\n" +
-          "- Include code blocks (with language tag) for API signatures, CLI commands, config snippets, or code patterns.\n" +
+          "- Include code blocks (with language tag) ONLY for content that appears verbatim in the [Source] blocks — API signatures, CLI commands, config snippets, or code patterns. Do NOT write code blocks for content not present in the sources.\n" +
           "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
           "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
           "- Avoid vague filler phrases like 'it is worth noting', 'this allows you to', 'you need to'. State the fact directly.\n\n" +
@@ -68,7 +69,8 @@ export class DraftGenerator implements IDraftGenerator {
           "Write in Japanese Markdown, starting directly with ## headings.\n\n" +
           "実用性ルール（最優先）:\n" +
           "- 読者は現役のエンジニアである。記事を読んだ後5秒以内に何かを実践できること — コマンドを実行する、APIを呼ぶ、設定を変える、特定のURLを開いて始める。\n" +
-          "- すべての記事に以下のいずれかを必ず含めること: CLIコマンド、API呼び出し例、コードスニペット、設定変更例、またはGetting Startedページへの直リンク。\n" +
+          "- 幻覚防止（絶対禁止）: [Source] ブロックに一字一句登場しないSDKクラス名、メソッド名、APIエンドポイント、設定キー、コードスニペットを絶対に作り上げないこと。もっともらしいが未検証のコードを捏造することは記事却下に直結する。\n" +
+          "- [Source] ブロックに実際のコード例やCLIコマンドが含まれている場合はそれを使うこと。含まれていない場合は、公式ドキュメントまたはGetting Startedページへのリンクをコードブロックの代わりに使うこと — これは捏造コードより望ましい。\n" +
           "- ソースがプレスリリースのみで技術詳細がない場合、公式ドキュメントURLまたはGetting Startedページを明示し、何がまだ文書化されていないかを述べること。\n" +
           "- 「何が発表されたか」だけを述べる記事は禁止。必ず「エンジニアが今日どう使えるか」に答えること。\n\n" +
           "1トピック深掘りルール（必須 — 違反した場合は記事が却下される）:\n" +
@@ -83,7 +85,7 @@ export class DraftGenerator implements IDraftGenerator {
           "Formatting rules (strictly enforced):\n" +
           "- Each paragraph MUST be 2-3 sentences maximum. Start a new paragraph rather than extending one.\n" +
           "- Use bullet lists or numbered lists whenever presenting multiple items, steps, or options.\n" +
-          "- Include code blocks (with language tag) for API signatures, CLI commands, config snippets, or code patterns.\n" +
+          "- Include code blocks (with language tag) ONLY for content that appears verbatim in the [Source] blocks — API signatures, CLI commands, config snippets, or code patterns. Do NOT write code blocks for content not present in the sources.\n" +
           "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
           "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
           "- 「〜が可能です」「〜に注目すべきです」「〜が重要です」のような曖昧なフィラー表現を避け、事実を直接述べること。\n" +
