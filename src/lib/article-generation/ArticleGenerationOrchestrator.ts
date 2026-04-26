@@ -163,11 +163,7 @@ export class ArticleGenerationOrchestrator {
     );
     const contextBlock = `Today is ${input.date}.\n\n${context}`;
 
-    const metadata = await this.metadataGenerator.generate({
-      context,
-      lang: input.lang,
-    });
-
+    // Step 2a: generate draft body first
     const draftBody = await this.draftGenerator.generate({
       contextBlock,
       lang: input.lang,
@@ -176,6 +172,7 @@ export class ArticleGenerationOrchestrator {
     if (!draftBody) throw new Error("LLM returned empty draft body");
     console.log(`Step 2a draft complete: ${draftBody.length} chars`);
 
+    // Step 2b: post-process draft
     let finalBody = draftBody;
     try {
       if (input.db) {
@@ -189,6 +186,12 @@ export class ArticleGenerationOrchestrator {
         `Step 2b post-processing failed, using draft: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+
+    // Step 2c: generate metadata from the final body to ensure title matches content
+    const metadata = await this.metadataGenerator.generate({
+      draftBody: finalBody,
+      lang: input.lang,
+    });
 
     return {
       ...metadata,

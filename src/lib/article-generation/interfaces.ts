@@ -41,7 +41,7 @@ export interface IResearchEnricher {
 
 export interface IMetadataGenerator {
   generate(input: {
-    context: string;
+    draftBody: string;
     lang: "ja" | "en";
   }): Promise<{ title: string; summary: string; tags: string[] }>;
 }
