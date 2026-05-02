@@ -161,7 +161,15 @@ export class ArticleGenerationOrchestrator {
       finalAttempt.selectedEntries,
       finalAttempt.fullTextMap,
     );
-    const contextBlock = `Today is ${input.date}.\n\n${context}`;
+
+    const keyNewFacts = finalAttempt.topicSelection.keyNewFacts ?? [];
+    const newFactsBlock =
+      keyNewFacts.length > 0
+        ? "**MANDATORY — KEY NEW FACTS FROM THIS ANNOUNCEMENT (must appear in article, do not omit or vague-ify):**\n" +
+          keyNewFacts.map((f) => `- ${f}`).join("\n") +
+          "\n\n"
+        : "";
+    const contextBlock = `Today is ${input.date}.\n\n${newFactsBlock}${context}`;
 
     // Step 2a: generate draft body first
     const draftBody = await this.draftGenerator.generate({

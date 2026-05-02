@@ -28,6 +28,7 @@ export class DraftGenerator implements IDraftGenerator {
           "Practicality rule (HIGHEST PRIORITY):\n" +
           "- The reader is a working engineer. After reading this article, they must be able to DO something within 5 seconds — run a command, call an API, change a config, or open a specific URL to get started.\n" +
           "- ANTI-HALLUCINATION (CRITICAL): NEVER fabricate SDK class names, method names, API endpoints, configuration keys, or code examples that do NOT appear verbatim in the [Source] blocks. Inventing plausible-sounding but unverified code is strictly forbidden and causes article rejection.\n" +
+          "- ANTI-STALE-KNOWLEDGE (CRITICAL): If a [Source] block describes a CHANGE to how a technology works — a new architecture, a removed or optional dependency, a new capability, an updated limit — you MUST describe that change explicitly. Do NOT write about the technology as if it still works the old way. If a source says a dependency has been removed or made optional, writing that the product 'uses' that dependency is strictly forbidden. If a MANDATORY KEY NEW FACTS block appears above the [Source] blocks, every item in that list MUST appear verbatim (or as a direct paraphrase) somewhere in the article body — omitting even one is a violation.\n" +
           "- If the [Source] blocks contain actual code examples or CLI commands, include them. If they do not, use a direct link to the official documentation or getting-started guide instead — this is equally valid and preferable to invented code.\n" +
           "- If the source material is only a press release with no technical details, explicitly provide the official documentation URL or getting-started page and state what is NOT yet documented.\n" +
           "- NEVER write an article that only describes WHAT was announced. Always answer HOW an engineer can use it TODAY.\n\n" +
@@ -70,6 +71,7 @@ export class DraftGenerator implements IDraftGenerator {
           "実用性ルール（最優先）:\n" +
           "- 読者は現役のエンジニアである。記事を読んだ後5秒以内に何かを実践できること — コマンドを実行する、APIを呼ぶ、設定を変える、特定のURLを開いて始める。\n" +
           "- 幻覚防止（絶対禁止）: [Source] ブロックに一字一句登場しないSDKクラス名、メソッド名、APIエンドポイント、設定キー、コードスニペットを絶対に作り上げないこと。もっともらしいが未検証のコードを捏造することは記事却下に直結する。\n" +
+          "- 旧来知識の上書き禁止（絶対禁止）: [Source] ブロックが技術の仕組みの変化（新アーキテクチャ、依存関係の削除または任意化、新機能、数値の更新）を記述している場合、その変化を明示的に説明すること。以前の動作を「変わっていない」かのように書いてはならない。ソースが「コンポーネントYへの依存が不要になった」と記述している場合、「コンポーネントYを使用する」と書くことは絶対に禁止。上部に **MANDATORY — KEY NEW FACTS** ブロックが存在する場合、そのリストの各項目は記事本文中に必ず含めること — 1つでも欠落すれば違反とみなす。\n" +
           "- [Source] ブロックに実際のコード例やCLIコマンドが含まれている場合はそれを使うこと。含まれていない場合は、公式ドキュメントまたはGetting Startedページへのリンクをコードブロックの代わりに使うこと — これは捏造コードより望ましい。\n" +
           "- ソースがプレスリリースのみで技術詳細がない場合、公式ドキュメントURLまたはGetting Startedページを明示し、何がまだ文書化されていないかを述べること。\n" +
           "- 「何が発表されたか」だけを述べる記事は禁止。必ず「エンジニアが今日どう使えるか」に答えること。\n\n" +

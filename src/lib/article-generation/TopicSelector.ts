@@ -20,6 +20,7 @@ export interface TopicSelection {
   topic: string;
   reason: string;
   indices: number[];
+  keyNewFacts: string[];
 }
 
 export class TopicSelector implements ITopicSelector {
@@ -74,9 +75,10 @@ export class TopicSelector implements ITopicSelector {
         '- "topic": English description of the chosen topic (1 sentence)\n' +
         '- "reason": why this is the best topic AND how it differs from past articles (1 sentence)\n' +
         '- "indices": array of 1-based entry numbers that are DIRECTLY relevant to this topic. Only include entries that contain technical details, announcements, or documentation about the chosen topic. Do NOT include tangentially related entries (e.g., general opinion pieces, unrelated product pages from the same company, community forum posts about different features).\n' +
+        '- "keyNewFacts": array of 2-4 strings, each stating one SPECIFIC NEW fact from the selected entries: version numbers, exact node/server counts, newly removed dependencies, new API or feature names, architectural changes, or benchmark figures. These must be concrete and extractable from the source text — do NOT write vague summaries like "improved performance". Example: ["Supports up to 1,000 nodes GA, 4,000 nodes planned later in 2026", "Local control plane added — no longer requires Azure Arc connectivity", "External SAN (Fibre Channel / iSCSI) now supported as shared block storage"]\n' +
         "Output only the JSON object, no markdown fences.",
       user: avoidBlock + rejectedBlock + contextForSelection,
-      maxTokens: 256,
+      maxTokens: 512,
       temperature: 0.3,
     });
 
@@ -96,13 +98,23 @@ export class TopicSelector implements ITopicSelector {
       ) {
         throw new Error("Schema validation failed");
       }
-      topicSelection = parsed as TopicSelection;
+      topicSelection = {
+        topic: parsed.topic,
+        reason: parsed.reason,
+        indices: parsed.indices,
+        keyNewFacts: Array.isArray(parsed.keyNewFacts)
+          ? (parsed.keyNewFacts as unknown[])
+              .filter((f): f is string => typeof f === "string")
+              .slice(0, 6)
+          : [],
+      };
     } catch {
       console.warn(`Topic selection parse failed, using fallback. Raw: ${topicSelectionRaw.slice(0, 200)}`);
       topicSelection = {
         topic: "Latest technical developments",
         reason: "Using all provided entries as fallback",
         indices: input.entries.map((_, index) => index + 1),
+        keyNewFacts: [],
       };
     }
 
