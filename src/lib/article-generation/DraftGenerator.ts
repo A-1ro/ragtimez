@@ -47,7 +47,7 @@ export class DraftGenerator implements IDraftGenerator {
           "- Each paragraph MUST be 2-3 sentences maximum. Start a new paragraph rather than extending one.\n" +
           "- Use bullet lists or numbered lists whenever presenting multiple items, steps, or options.\n" +
           "- Include code blocks (with language tag) ONLY for content that appears verbatim in the [Source] blocks — API signatures, CLI commands, config snippets, or code patterns. Do NOT write code blocks for content not present in the sources.\n" +
-          "- When showing CLI flags in a code block, always include the full command form with the `--` prefix (e.g., `vllm serve --logprobs-mode=processed_logprobs`). Never show a bare `key=value` flag without context — engineers must be able to copy and run the command directly.\n" +
+          "- When showing CLI flags in a code block, always show the full runnable command as it would appear in a terminal — including the tool name and flag prefix exactly as the source presents them (e.g., `vllm serve --logprobs-mode=processed_logprobs`). Never extract a flag and show it as a bare `key=value` string without the surrounding command — engineers must be able to copy and run the command directly.\n" +
           "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
           "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
           "- Avoid vague filler phrases like 'it is worth noting', 'this allows you to', 'you need to'. State the fact directly.\n\n" +
@@ -93,7 +93,7 @@ export class DraftGenerator implements IDraftGenerator {
           "- Each paragraph MUST be 2-3 sentences maximum. Start a new paragraph rather than extending one.\n" +
           "- Use bullet lists or numbered lists whenever presenting multiple items, steps, or options.\n" +
           "- Include code blocks (with language tag) ONLY for content that appears verbatim in the [Source] blocks — API signatures, CLI commands, config snippets, or code patterns. Do NOT write code blocks for content not present in the sources.\n" +
-          "- CLIフラグをコードブロックとして掲載する場合は、`--` プレフィックスを含む完全なコマンド形式（例: `vllm serve --logprobs-mode=processed_logprobs`）で示すこと。フラグ名のみを `key=value` 形式で単体掲載してはならない — エンジニアがそのままコピーして実行できない記述は禁止。\n" +
+          "- CLIフラグをコードブロックとして掲載する場合は、ソースに記載されているとおりのフラグ形式とツール名を含む完全な実行可能コマンド（例: `vllm serve --logprobs-mode=processed_logprobs`）で示すこと。フラグを `key=value` 形式で周囲のコマンドから切り離して単体掲載してはならない — エンジニアがそのままコピーして実行できない記述は禁止。\n" +
           "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
           "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
           "- 「〜が可能です」「〜に注目すべきです」「〜が重要です」のような曖昧なフィラー表現を避け、事実を直接述べること。\n" +
