@@ -28,6 +28,10 @@ export async function postProcess(
     }
   }
 
+  // Strip MANDATORY KEY NEW FACTS blocks that the LLM may copy verbatim from the context input.
+  // These are prompt instructions, not article content.
+  result = result.replace(/\*\*MANDATORY[^*\n]*\*\*\n(?:- [^\n]*\n)*\n?/g, "");
+
   const segments = result.split(/(```[\s\S]*?```)/g);
   result = segments.map((segment, i) => {
     if (i % 2 === 1) return segment;
