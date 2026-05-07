@@ -38,7 +38,8 @@ export class DraftGenerator implements IDraftGenerator {
           "- Every ## section MUST directly explain the SAME topic. Do NOT dedicate a section to a tangentially related product, community project, or unrelated announcement even if it appears in the [Source] blocks.\n" +
           "- If a [Source] block covers a different product or topic, extract ONLY the details that directly connect to the main topic. Ignore the rest.\n" +
           "- FORBIDDEN patterns: a section about 'Community Activities', a section listing other products by the same company, a section about an unrelated open-source project. These are signs of a news roundup, not a deep dive.\n" +
-          "- At least one section MUST explain HOW the technology works — architecture, data flow, API design, runtime model, or implementation pattern. If the source lacks these details, explicitly state: 'The official announcement does not detail the implementation architecture.'\n\n" +
+          "- At least one section MUST explain HOW the technology works — architecture, data flow, API design, runtime model, or implementation pattern. If the source lacks these details, explicitly state: 'The official announcement does not detail the implementation architecture.'\n" +
+          "- When explaining a technical change, explicitly contrast the old constraint with the new capability using concrete numbers (e.g., 'Previously limited to 16 nodes per cluster; the new disaggregated architecture enables scaling to thousands of nodes'). Omit this contrast only if the source contains no information about the prior limitation.\n\n" +
           "Structure guidelines:\n" +
           "- Use 3 to 5 sections with ## headings chosen to fit the topic naturally. Do NOT use a fixed set of section names.\n" +
           "- The last section MUST be a ## Summary with 3-5 bullet points of actionable takeaways.\n" +
@@ -50,6 +51,7 @@ export class DraftGenerator implements IDraftGenerator {
           "- When showing CLI flags in a code block, always show the full runnable command as it would appear in a terminal — including the tool name and flag prefix exactly as the source presents them (e.g., `vllm serve --logprobs-mode=processed_logprobs`). Never extract a flag and show it as a bare `key=value` string without the surrounding command — engineers must be able to copy and run the command directly.\n" +
           "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
           "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
+          "- Do NOT repeat the same high-level benefit (e.g., data sovereignty, customer control, compliance) across multiple sections. State each benefit exactly once in the section where it is most directly relevant; subsequent sections must add new technical substance, not re-confirm earlier points.\n" +
           "- Avoid vague filler phrases like 'it is worth noting', 'this allows you to', 'you need to'. State the fact directly.\n\n" +
           "Content rules:\n" +
           "- You MUST reference at least 3 specific facts from the provided source texts: product names, version numbers, benchmark numbers, API names, or direct quotes. If a source mentions a specific number or name, USE IT — do not paraphrase into vague generalities.\n" +
@@ -84,7 +86,8 @@ export class DraftGenerator implements IDraftGenerator {
           "- すべての ## セクションが同じ1つのトピックを直接説明すること。関連が薄い製品、コミュニティプロジェクト、別の発表にセクションを割いてはならない。\n" +
           "- [Source] ブロックに別の製品やトピックが含まれている場合、メインのトピックに直接関係する詳細のみを抽出し、それ以外は無視すること。\n" +
           "- 禁止パターン: 「コミュニティ活動」セクション、同じ企業の別製品を列挙するセクション、無関係なOSSプロジェクトのセクション。これらはニュースまとめ記事の兆候であり、深掘り記事ではない。\n" +
-          "- 少なくとも1つのセクションで技術の仕組みを説明すること — アーキテクチャ、データフロー、API設計、ランタイムモデル、実装パターンのいずれか。ソースにこれらの詳細がない場合は「公式発表では実装アーキテクチャの詳細は明らかにされていない」と明記すること。\n\n" +
+          "- 少なくとも1つのセクションで技術の仕組みを説明すること — アーキテクチャ、データフロー、API設計、ランタイムモデル、実装パターンのいずれか。ソースにこれらの詳細がない場合は「公式発表では実装アーキテクチャの詳細は明らかにされていない」と明記すること。\n" +
+          "- 技術の変化を説明する際は、変更前の制約・制限と変更後の能力を具体的な数値で対比すること（例：「従来は最大16ノードの制限があったが、新しい分散型アーキテクチャにより数千ノードへのスケールが可能になった」）。ソースに旧制限の記載がない場合はこの対比は省略してよい。\n\n" +
           "Structure guidelines:\n" +
           "- Use 3 to 5 sections with ## headings chosen to fit the topic naturally. Do NOT use a fixed set of section names.\n" +
           "- The last section MUST be ## まとめ — this section answers 'この記事の内容から、技術者は何を実現できるのか'. Write 3-5 bullet points.\n" +
@@ -96,6 +99,7 @@ export class DraftGenerator implements IDraftGenerator {
           "- CLIフラグをコードブロックとして掲載する場合は、ソースに記載されているとおりのフラグ形式とツール名を含む完全な実行可能コマンド（例: `vllm serve --logprobs-mode=processed_logprobs`）で示すこと。フラグを `key=value` 形式で周囲のコマンドから切り離して単体掲載してはならない — エンジニアがそのままコピーして実行できない記述は禁止。\n" +
           "- Do NOT repeat the same information across multiple sections. Each section must add new content.\n" +
           "- CRITICAL: Before writing each section, check if any sentence restates something from a previous section. If it does, delete it and write something new. Common violations: repeating the definition of the topic, repeating why something is 'important', restating the same benefit in different words.\n" +
+          "- セクション間で同じ「便益」（データ主権・顧客制御・規制対応・コンプライアンスなど）を繰り返し言及しないこと。各セクションは前のセクションで述べた利点を再確認せず、新しい技術的側面（アーキテクチャ詳細、具体的な機能、制限事項など）に焦点を当てること。\n" +
           "- 「〜が可能です」「〜に注目すべきです」「〜が重要です」のような曖昧なフィラー表現を避け、事実を直接述べること。\n" +
           "\n" +
           "Content rules:\n" +
