@@ -161,7 +161,12 @@ export class ArticleGenerationOrchestrator {
       finalAttempt.selectedEntries,
       finalAttempt.fullTextMap,
     );
-
+    // Inject topic focus and key facts so the draft generator knows what to emphasize.
+    // topicDirective gives the editorial angle (why this topic was chosen).
+    // newFactsBlock lists specific facts the LLM must weave into the article body.
+    const topicDirective =
+      `FOCUSED TOPIC: ${finalAttempt.topicSelection.topic}\n` +
+      `KEY ANGLE TO EMPHASIZE: ${finalAttempt.topicSelection.reason}\n\n`;
     const keyNewFacts = finalAttempt.topicSelection.keyNewFacts ?? [];
     const newFactsBlock =
       keyNewFacts.length > 0
@@ -169,7 +174,7 @@ export class ArticleGenerationOrchestrator {
           keyNewFacts.map((f) => `- ${f}`).join("\n") +
           "\n\n"
         : "";
-    const contextBlock = `Today is ${input.date}.\n\n${newFactsBlock}${context}`;
+    const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
 
     // Step 2a: generate draft body first
     const draftBody = await this.draftGenerator.generate({
