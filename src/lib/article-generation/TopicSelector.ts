@@ -113,7 +113,8 @@ export class TopicSelector implements ITopicSelector {
       topicSelection = {
         topic: "Latest technical developments",
         reason: "Using all provided entries as fallback",
-        indices: input.entries.map((_, index) => index + 1),
+        // Limit to top 5 to prevent all RSS/Tavily entries from flooding frontmatter sources.
+        indices: input.entries.slice(0, 5).map((_, index) => index + 1),
         keyNewFacts: [],
       };
     }
