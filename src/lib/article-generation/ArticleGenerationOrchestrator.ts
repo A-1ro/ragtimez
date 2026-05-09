@@ -38,6 +38,7 @@ export class ArticleGenerationOrchestrator {
     const rejectedTopics: string[] = [];
     let bestAttempt: {
       topicSelection: { topic: string; reason: string; indices: number[] };
+      topicEntries: RssEntry[];
       selectedEntries: RssEntry[];
       fullTextMap?: Map<string, string>;
       score: number;
@@ -100,6 +101,7 @@ export class ArticleGenerationOrchestrator {
 
       const currentAttempt = {
         topicSelection: selection.topicSelection,
+        topicEntries: selection.selectedEntries,
         selectedEntries: enriched.selectedEntries,
         fullTextMap: enriched.fullTextMap,
         score: quality.score,
@@ -143,6 +145,7 @@ export class ArticleGenerationOrchestrator {
       );
       bestAttempt = {
         topicSelection: lastSelection.topicSelection,
+        topicEntries: lastSelection.selectedEntries,
         selectedEntries: enriched.selectedEntries,
         fullTextMap: enriched.fullTextMap,
         score: quality.score,
@@ -210,7 +213,10 @@ export class ArticleGenerationOrchestrator {
       ...metadata,
       body: finalBody,
       selectedTopic: finalAttempt.topicSelection.topic,
-      selectedEntries: finalAttempt.selectedEntries,
+      // topicEntries: original TopicSelector output (1-5 entries) used for source extraction.
+      // selectedEntries (enriched, up to 20) was used for LLM context but must NOT flow into
+      // frontmatter sources to avoid unrelated RSS/Tavily entries contaminating the source list.
+      selectedEntries: finalAttempt.topicEntries,
     };
   }
 }
