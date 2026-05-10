@@ -28,9 +28,22 @@ export const BLOG_DOMAINS = [
 
 export function classifySourceType(url: string): "official" | "blog" | "other" {
   try {
-    const hostname = new URL(url).hostname.replace(/^www\./, "");
+    const parsed = new URL(url);
+    const hostname = parsed.hostname.replace(/^www\./, "");
+
     for (const domain of OFFICIAL_DOMAINS) {
       if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+        // huggingface.co community blogs at /blog/{org}/{article} are not official —
+        // they are authored by third parties (hackathon teams, individuals, etc.).
+        // Only treat as official if it's a model card, dataset, space, or HF's own blog.
+        if (domain === "huggingface.co") {
+          const pathParts = parsed.pathname.split("/").filter(Boolean);
+          // /blog/{org}/{article} (3+ parts) = community/org-scoped post → blog
+          // /blog/{article}     (2 parts)  = HuggingFace first-party post  → official
+          if (pathParts[0] === "blog" && pathParts.length >= 3) {
+            return "blog";
+          }
+        }
         return "official";
       }
     }
