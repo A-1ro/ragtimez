@@ -38,7 +38,9 @@ export function classifySourceType(url: string): "official" | "blog" | "other" {
         // Only treat as official if it's a model card, dataset, space, or HF's own blog.
         if (domain === "huggingface.co") {
           const pathParts = parsed.pathname.split("/").filter(Boolean);
-          if (pathParts[0] === "blog" && pathParts.length >= 2) {
+          // /blog/{org}/{article} (3+ parts) = community/org-scoped post → blog
+          // /blog/{article}     (2 parts)  = HuggingFace first-party post  → official
+          if (pathParts[0] === "blog" && pathParts.length >= 3) {
             return "blog";
           }
         }
