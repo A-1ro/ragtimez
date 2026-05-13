@@ -16,8 +16,8 @@ export class DraftGenerator implements IDraftGenerator {
     hasFullText: boolean;
   }): Promise<string> {
     const fullTextInstruction = input.hasFullText
-      ? "- The context includes full article body text. Use specific details, version numbers, API signatures, and benchmarks from the source text. Include code examples ONLY if they appear verbatim in the source — do NOT reconstruct or infer code that is not explicitly present.\n"
-      : "- The context contains only article summaries. Be explicit when you lack technical detail. Do NOT write code blocks, API signatures, or SDK class names — none of these can be verified from summaries alone.\n";
+      ? "- The context includes full article body text. Prioritize extracting the following in this order: (1) API/method names (e.g., InvokeModelWithBidirectionalStream), (2) specific service or library names, (3) version numbers and release dates, (4) benchmark figures and latency values, (5) verbatim code snippets. If none of these appear in your article body, add a sentence stating: 'The official documentation provides the API reference at [URL from Source block]'. Include code examples ONLY if they appear verbatim in the source — do NOT reconstruct or infer code that is not explicitly present.\n"
+      : "- The context contains only article summaries. Be explicit when you lack technical detail. Do NOT write code blocks, API signatures, or SDK class names — none of these can be verified from summaries alone. When the source text lacks a specific API name, write: 'The official documentation provides the API reference at [URL from Source block]'.\n";
 
     const system =
       input.lang === "en"
@@ -115,7 +115,7 @@ export class DraftGenerator implements IDraftGenerator {
           "- このセクションの目的は「事実の要約」ではなく「読者が何を実現できるか」を伝えること。読んだ技術者が『自分もやってみよう』と思える具体的なゴールを示す。\n" +
           "- Each bullet MUST describe a concrete outcome the reader can achieve: '〇〇を使って△△を実現できる', '〇〇を導入することで△△のコストを XX% 削減できる' のように、技術名+実現できること のペアで書く。\n" +
           "- BAD: 'メモリ管理は重要です'（事実の羅列）. BAD: 'LangChain Deep Agents のハーネス設定を確認する'（作業指示だけで何が実現できるか不明）. GOOD: 'LangChain Deep Agents のハーネス設定でメモリの永続化先を自社ストレージに切り替えれば、セッション間のコンテキスト保持を自社ポリシーで管理できるようになる'.\n" +
-          "- The ## まとめ must contain NEW insights about what becomes possible, not restatements of earlier paragraphs. **CRITICAL チェック**: 各箇条書きを書く前に、その内容が前のセクションで既に述べられていないか確認すること。前のセクションをそのまま要約した箇条書きは削除すること。**重複の具体例（禁止）**: セクション本文で「AMD MI300X + Unsloth で QLoRA 微調整を高速化した」と書いた場合、まとめで「AMD MI300XとUnslothを組み合わせたQLoRA微調整により学習時間を短縮できる」と書くことは禁止 — 同一内容の言い換えである。完全に新しい内容が書けない場合は、**複数セクションの知見を結合した合成的な洞察**（例: 「A の性能特性 + B のプライバシー保護 = C の規制環境での実用化が可能」形式）を書くこと。\n\n" +
+          "- The ## まとめ must contain NEW insights about what becomes possible, not restatements of earlier paragraphs. **CRITICAL チェック（必須手順）**: 各箇条書きの草案を書いたら、[セクション名: 同一内容の有無] の形式で自己採点すること。重複が1つでも検出されたら、その箇条書きを削除し以下の代替パターンで書き直すこと。\n代替パターン A（合成）:「AセクションのX機能 + BセクションのY特性を組み合わせると、Zというユースケースで実用化できる」\n代替パターン B（制約の明示）:「XはYの条件下では動作しないため、[具体的な回避策] を採用する必要がある」\n代替パターン C（次のステップ）:「今すぐ [URL from Source block] を開いてクイックスタートサンプルを実行することで、[具体的な確認事項] を検証できる」\n**重複の具体例（禁止）**: セクション本文で「AMD MI300X + Unsloth で QLoRA 微調整を高速化した」と書いた場合、まとめで「AMD MI300XとUnslothを組み合わせたQLoRA微調整により学習時間を短縮できる」と書くことは禁止 — 同一内容の言い換えである。\n\n" +
           "核心的主張・出典明記ルール（必須 — 守られない場合は記事が却下される）:\n" +
           "- 核心的主張: 各 [Source] ブロックから著者が最も強く主張していることを特定し、その核心的主張を本文中（## まとめ だけでなく本文のどこか）で明示すること。\n" +
           "- 出典 URL（**CRITICAL — 違反した場合は記事が却下される**）: **## まとめを除く全ての ## セクション**の末尾に、そのセクションで参照した [Source] ブロックの URL を `（出典: [タイトルまたはドメイン名](url)）` のMarkdownリンク形式で必ず記載すること。[Source] ブロックの内容を1つも参照していないセクションは、そのセクション全体を削除して書き直すこと。ベアURL（リンク記法でないむき出しのURL）は絶対に使わないこと。**出典URLの捏造禁止（絶対禁止）**: 出典リンクに使う URL は、必ず提供された [Source] ブロックの `Source:` 行に明示されているURLのみを使用すること。`[Source]` ブロックに含まれていないURL（例: `https://huggingface.co/docs`、`https://openai.com/api` など）を事前学習知識から補完して記載することは絶対禁止。対応する [Source] ブロックが存在しないセクションはそのセクション全体を削除して書き直すこと。\n" +
