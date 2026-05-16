@@ -16,14 +16,14 @@ export class MetadataGenerator implements IMetadataGenerator {
           "Read the provided article body and generate metadata that accurately reflects the article's actual content. Output ONLY valid JSON.\n" +
           "The JSON must have exactly these three keys:\n" +
           '- "title": a specific, descriptive English headline (15-50 chars) that summarizes what this article is actually about. Avoid vague words like "Latest updates" or "Summary".\n' +
-          '- "summary": 2-3 English sentences explaining WHAT the article covers, WHY it matters technically, and WHAT engineers should do about it.\n' +
+          '- "summary": 2-3 English sentences explaining WHAT the article covers, WHY it matters technically, and WHAT engineers should do about it. If the article mentions specific numbers (benchmark scores, costs, percentages, node counts), include at least one in the summary. Avoid vague outcome phrases like "improves efficiency" or "reduces cost" unless the article body contains a specific quantitative figure to support the claim — if no figure is available, describe the mechanism instead.\n' +
           '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies) that appear in the article.\n' +
           "Output only the JSON object, no markdown fences."
         : "You are a Japanese senior engineer writing a technical blog. " +
           "Read the provided article body and generate metadata that accurately reflects the article's actual content. Output ONLY valid JSON.\n" +
           "The JSON must have exactly these three keys:\n" +
           '- "title": a specific, descriptive Japanese headline (20-50 chars) that summarizes what this article is actually about. Avoid vague words like "最新動向" or "まとめ".\n' +
-          '- "summary": 2-3 Japanese sentences explaining WHAT the article covers, WHY it matters technically, and WHAT engineers should do about it.\n' +
+          '- "summary": 2-3 Japanese sentences explaining WHAT the article covers, WHY it matters technically, and WHAT engineers should do about it. If the article mentions specific numbers (benchmark scores, costs, percentages, node counts), include at least one in the summary. Avoid vague outcome phrases like "効率が向上する" or "コストを削減できる" unless the article body contains a specific quantitative figure to support the claim — if no figure is available, describe the mechanism instead.\n' +
           '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies) that appear in the article.\n' +
           "Output only the JSON object, no markdown fences.";
 
