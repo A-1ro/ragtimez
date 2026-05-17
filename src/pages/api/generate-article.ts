@@ -18,6 +18,7 @@ import { ResearchEnricher } from "../../lib/article-generation/ResearchEnricher"
 import {
   deriveTrustLevel,
   extractSources,
+  filterSourcesByCited,
 } from "../../lib/article-generation/sourceMetadata";
 import { TopicSelector, type RecentArticle } from "../../lib/article-generation/TopicSelector";
 import { TranslationService } from "../../lib/article-generation/TranslationService";
@@ -283,9 +284,12 @@ export const POST: APIRoute = async ({ request }) => {
   // --- Extract sources & trust level ----------------------------------------
   // In translation mode: inherit sources and trustLevel from the Japanese article.
   // In full generation mode: derive from the LLM-selected RSS entries.
-  const sources: ArticleSource[] = translationSource
+  const rawSources = translationSource
     ? translationSource.sources
     : extractSources(llmResult.selectedEntries);
+  const sources: ArticleSource[] = translationSource
+    ? rawSources
+    : filterSourcesByCited(llmResult.body, rawSources);
   const trustLevel: "official" | "blog" | "speculative" = translationSource
     ? translationSource.trustLevel
     : deriveTrustLevel(sources);
