@@ -1,6 +1,7 @@
 ---
 import NewsletterForm from "../components/NewsletterForm.astro";
 import LanguageSwitcher from "../components/LanguageSwitcher.astro";
+import SearchForm from "../components/SearchForm.astro";
 import { getLangFromPath, localizePath, type Lang } from "../lib/i18n";
 
 interface Props {
@@ -714,6 +715,26 @@ const isAdmin = Astro.locals.isAdmin ?? false;
         }
       }
 
+      .header-search-wrapper {
+        display: flex;
+        align-items: center;
+      }
+      .drawer-search-wrapper {
+        margin-bottom: 0.5rem;
+      }
+      /* Hide header search on mobile — use drawer search instead */
+      @media (max-width: 768px) {
+        .header-search-wrapper {
+          display: none;
+        }
+      }
+      /* Further reduce header search on tablet-narrow if needed */
+      @media (max-width: 900px) and (min-width: 769px) {
+        .header-search-wrapper .search-input {
+          width: 140px;
+        }
+      }
+
       @media (max-width: 600px) {
         :root {
           --spacing: 1rem;
@@ -750,6 +771,9 @@ const isAdmin = Astro.locals.isAdmin ?? false;
           {effectiveShowLanguageSwitcher && (
             <LanguageSwitcher currentLang={lang} alternateHref={alternateLangHref} />
           )}
+          <div class="header-search-wrapper">
+            <SearchForm lang={lang} variant="header" />
+          </div>
         </div>
         <div class="nav-auth">
           {user ? (
@@ -834,6 +858,10 @@ const isAdmin = Astro.locals.isAdmin ?? false;
       </div>
 
       <nav class="drawer-nav">
+        <div class="drawer-search-wrapper">
+          <SearchForm lang={lang} variant="drawer" />
+        </div>
+        <div class="drawer-divider"></div>
         {user ? (
           <>
             <a href={`/profile/${user.login}`} class="drawer-user-profile">

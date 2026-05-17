@@ -1,0 +1,96 @@
+---
+import { t, type Lang } from "../lib/i18n";
+
+interface Props {
+  lang: Lang;
+  variant?: "header" | "drawer";
+  initialQuery?: string;
+}
+
+const { lang, variant = "header", initialQuery } = Astro.props;
+
+const currentQuery = Astro.url.searchParams.get("q") ?? initialQuery ?? "";
+const action = lang === "ja" ? "/search" : "/en/search";
+const inputId = `search-input-${variant}`;
+---
+<form role="search" method="GET" action={action} class={`search-form search-form--${variant}`}>
+  <label class="sr-only" for={inputId}>{t(lang, "searchLabel")}</label>
+  <input
+    type="search"
+    id={inputId}
+    name="q"
+    value={currentQuery}
+    placeholder={t(lang, "searchPlaceholder")}
+    autocomplete="off"
+    class="search-input"
+  />
+  <button type="submit" class="search-submit" aria-label={t(lang, "searchButtonLabel")}>
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <circle cx="11" cy="11" r="8"/>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"/>
+    </svg>
+  </button>
+</form>
+
+<style>
+  .sr-only {
+    position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px;
+    overflow: hidden; clip: rect(0,0,0,0); white-space: nowrap; border: 0;
+  }
+  .search-form {
+    display: flex; align-items: center; gap: 0.25rem;
+  }
+  .search-form--header {
+    /* PC ヘッダー: コンパクト、高さ 36px */
+  }
+  .search-form--drawer {
+    width: 100%;
+  }
+  .search-input {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    color: var(--color-text);
+    font-size: 0.875rem;
+    padding: 0.4rem 0.7rem;
+    height: 36px;
+    width: 200px;
+    transition: border-color 0.2s, background-color 0.2s;
+  }
+  .search-form--drawer .search-input {
+    width: 100%;
+    height: 44px;
+    font-size: 1rem;
+  }
+  .search-input:focus {
+    outline: none;
+    border-color: var(--color-accent);
+    background: var(--color-bg);
+  }
+  .search-input::placeholder {
+    color: var(--color-muted);
+  }
+  .search-submit {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    background: none;
+    border: 1px solid var(--color-border);
+    border-radius: 0.5rem;
+    color: var(--color-muted);
+    cursor: pointer;
+    width: 36px;
+    height: 36px;
+    flex-shrink: 0;
+    transition: color 0.2s, border-color 0.2s, background 0.2s;
+  }
+  .search-form--drawer .search-submit {
+    width: 44px;
+    height: 44px;
+  }
+  .search-submit:hover {
+    color: var(--color-accent-soft);
+    border-color: var(--color-accent);
+    background: rgba(61, 142, 245, 0.06);
+  }
+</style>

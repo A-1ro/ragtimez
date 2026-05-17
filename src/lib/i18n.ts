@@ -51,6 +51,17 @@ export const translations: Record<Lang, Record<string, string>> = {
     bookmarksCount: "件の記事をブックマーク中",
     bookmarksArticleList: "ブックマーク記事一覧",
     tagsLabel: "タグ",
+    // Search UI strings
+    searchPlaceholder: "記事を検索...",
+    searchLabel: "記事を検索",
+    searchButtonLabel: "検索",
+    searchResultsTitle: "検索結果",
+    searchResultsFor: "「{q}」の検索結果",
+    searchNoResults: "該当する記事が見つかりませんでした。",
+    searchEmptyQuery: "検索キーワードを入力してください。",
+    searchResultCount: "件ヒット",
+    searchMatchedInBody: "本文一致",
+    searchTagFilter: "タグ",
   },
   en: {
     siteTagline: "AI-powered daily tech blog",
@@ -99,6 +110,17 @@ export const translations: Record<Lang, Record<string, string>> = {
     bookmarksCount: "articles bookmarked",
     bookmarksArticleList: "Bookmarked articles",
     tagsLabel: "Tags",
+    // Search UI strings
+    searchPlaceholder: "Search articles...",
+    searchLabel: "Search articles",
+    searchButtonLabel: "Search",
+    searchResultsTitle: "Search results",
+    searchResultsFor: "Search results for \"{q}\"",
+    searchNoResults: "No matching articles found.",
+    searchEmptyQuery: "Please enter a search term.",
+    searchResultCount: "results",
+    searchMatchedInBody: "Matched in body",
+    searchTagFilter: "Tag",
   },
 };
 

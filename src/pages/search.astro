@@ -1,0 +1,235 @@
+---
+import { getCollection } from "astro:content";
+import BaseLayout from "../layouts/BaseLayout.astro";
+import { trustLabelMap } from "../constants/trustLevels";
+import { formatDate } from "../utils/date";
+import { searchArticles, normalizeQuery, escapeHtml } from "../lib/articleSearch";
+import { t } from "../lib/i18n";
+
+export const prerender = false;
+
+const rawQuery = Astro.url.searchParams.get("q") ?? "";
+const rawTag = Astro.url.searchParams.get("tag");
+const tag = rawTag ? rawTag.trim().slice(0, 100) || undefined : undefined;
+const normalizedQuery = normalizeQuery(rawQuery);
+
+const allArticles = await getCollection("articles", ({ data }) => !data.draft && data.lang === "ja");
+
+const hits = normalizedQuery
+  ? searchArticles(allArticles, { query: normalizedQuery, lang: "ja", tag })
+  : [];
+
+const enSearchHref = `/en/search?q=${encodeURIComponent(normalizedQuery)}${tag ? `&tag=${encodeURIComponent(tag)}` : ""}`;
+
+const escapedQuery = escapeHtml(normalizedQuery);
+const pageTitle = normalizedQuery
+  ? `${t("ja", "searchResultsFor").replace("{q}", normalizedQuery)} | RAGtimeZ`
+  : `${t("ja", "searchResultsTitle")} | RAGtimeZ`;
+---
+
+<BaseLayout
+  title={pageTitle}
+  lang="ja"
+  alternateLangHref={enSearchHref}
+>
+  <section class="search-page">
+    <h1 class="search-heading">
+      {normalizedQuery ? (
+        <Fragment set:html={t("ja", "searchResultsFor").replace("{q}", `<span class="search-query">${escapedQuery}</span>`)} />
+      ) : (
+        t("ja", "searchResultsTitle")
+      )}
+    </h1>
+
+    {tag && (
+      <p class="filter-info">
+        {t("ja", "searchTagFilter")}: <code class="filter-tag">{tag}</code>
+      </p>
+    )}
+
+    {!normalizedQuery && (
+      <p class="empty">{t("ja", "searchEmptyQuery")}</p>
+    )}
+
+    {normalizedQuery && hits.length === 0 && (
+      <p class="empty">{t("ja", "searchNoResults")}</p>
+    )}
+
+    {normalizedQuery && hits.length > 0 && (
+      <p class="result-count">{hits.length} {t("ja", "searchResultCount")}</p>
+    )}
+
+    <section class="article-list" aria-label="検索結果">
+      {hits.map((hit) => {
+        const trust = trustLabelMap[hit.entry.data.trustLevel];
+        return (
+          <article class="card">
+            <a href={`/articles/${hit.entry.id}`} class="card-link">
+              <div class="card-top">
+                <time datetime={hit.entry.data.date.toISOString()} class="card-date">
+                  {formatDate(hit.entry.data.date)}
+                </time>
+                <span
+                  class="trust-badge"
+                  style={`background-color: ${trust.color}22; color: ${trust.color}; border-color: ${trust.color}44;`}
+                >
+                  {trust.label}
+                </span>
+                {hit.matchedInBody && (
+                  <span class="body-match-badge">{t("ja", "searchMatchedInBody")}</span>
+                )}
+              </div>
+              <h2 class="card-title" set:html={hit.titleHtml}></h2>
+              <p class="card-summary" set:html={hit.summaryHtml}></p>
+              {hit.entry.data.tags.length > 0 && (
+                <ul class="tag-list" aria-label="タグ">
+                  {hit.entry.data.tags.map((tag) => (
+                    <li class="tag">{tag}</li>
+                  ))}
+                </ul>
+              )}
+            </a>
+          </article>
+        );
+      })}
+    </section>
+  </section>
+</BaseLayout>
+
+<style>
+  .search-page {
+    padding: 1rem 0 2rem;
+  }
+  .search-heading {
+    font-size: clamp(1.25rem, 3vw, 1.625rem);
+    font-weight: 800;
+    margin: 0 0 0.75rem;
+    color: var(--color-text);
+    line-height: 1.4;
+  }
+  .search-query {
+    color: var(--color-accent-soft);
+  }
+  .filter-info {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    margin: 0 0 0.75rem;
+  }
+  .filter-tag {
+    background: var(--color-border);
+    color: var(--color-text);
+    padding: 0.1em 0.5em;
+    border-radius: 0.25rem;
+    font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  .empty {
+    color: var(--color-muted);
+    text-align: center;
+    padding: 3rem 0;
+    font-size: 1rem;
+  }
+  .result-count {
+    font-size: 0.875rem;
+    color: var(--color-muted);
+    margin: 0 0 1.25rem;
+  }
+  .article-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1.25rem;
+  }
+  .card {
+    background: var(--color-surface);
+    border: 1px solid var(--color-border);
+    border-radius: 0.75rem;
+    transition: border-color 0.2s, box-shadow 0.2s, transform 0.2s;
+  }
+  .card:hover {
+    border-color: var(--color-accent);
+    box-shadow: 0 0 0 1px rgba(61, 142, 245, 0.2), 0 8px 32px rgba(61, 142, 245, 0.15);
+    transform: translateY(-1px);
+  }
+  .card-link {
+    display: block;
+    padding: 1.25rem 1.5rem;
+    color: inherit;
+    text-decoration: none;
+  }
+  .card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 0.75rem;
+    margin-bottom: 0.75rem;
+    flex-wrap: wrap;
+  }
+  .card-date {
+    font-size: 0.8125rem;
+    color: var(--color-muted);
+    flex-shrink: 0;
+  }
+  .trust-badge {
+    display: inline-block;
+    padding: 0.2em 0.6em;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    border: 1px solid;
+    white-space: nowrap;
+    flex-shrink: 0;
+  }
+  .body-match-badge {
+    display: inline-block;
+    padding: 0.15em 0.55em;
+    border-radius: 999px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    border: 1px solid rgba(147, 197, 253, 0.35);
+    background: rgba(61, 142, 245, 0.08);
+    color: var(--color-accent-soft);
+    white-space: nowrap;
+  }
+  .card-title {
+    margin: 0 0 0.5rem;
+    font-size: 1.125rem;
+    font-weight: 700;
+    line-height: 1.4;
+    color: var(--color-text);
+  }
+  .card-summary {
+    margin: 0 0 0.75rem;
+    color: var(--color-muted);
+    font-size: 0.9375rem;
+    line-height: 1.6;
+  }
+  .tag-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.375rem;
+  }
+  .tag {
+    background: rgba(61, 142, 245, 0.1);
+    color: var(--color-accent-soft);
+    padding: 0.15em 0.6em;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    border: 1px solid rgba(61, 142, 245, 0.25);
+  }
+  .card-title :global(mark),
+  .card-summary :global(mark),
+  .search-query {
+    background: rgba(245, 158, 11, 0.25);
+    color: var(--color-text);
+    padding: 0 0.15em;
+    border-radius: 2px;
+  }
+  @media (max-width: 768px) {
+    .card-link { padding: 1rem; }
+    .card-title { font-size: 1rem; }
+    .card-top { flex-direction: column; align-items: flex-start; gap: 0.5rem; }
+  }
+</style>
