@@ -213,10 +213,11 @@ export class ArticleGenerationOrchestrator {
       ...metadata,
       body: finalBody,
       selectedTopic: finalAttempt.topicSelection.topic,
-      // topicEntries: original TopicSelector output (1-5 entries) used for source extraction.
-      // selectedEntries (enriched, up to 20) was used for LLM context but must NOT flow into
-      // frontmatter sources to avoid unrelated RSS/Tavily entries contaminating the source list.
+      // topicEntries: original TopicSelector output (1-5 entries) — primary source candidates.
+      // enrichedEntries: Tavily-expanded set used for LLM context; included here so that URLs
+      // cited by the LLM from Tavily pages can be resolved back to frontmatter sources.
       selectedEntries: finalAttempt.topicEntries,
+      enrichedEntries: finalAttempt.selectedEntries,
     };
   }
 }

@@ -85,7 +85,8 @@ export function extractSources(entries: RssEntry[]): ArticleSource[] {
 /**
  * Filters sources to only those whose URLs appear in the article body as Markdown links.
  * Prevents irrelevant topic-selector entries from contaminating frontmatter.
- * Falls back to the full list if no URLs match (e.g., model used bare URLs).
+ * Returns an empty array if no sources are cited — callers should pass enriched entries
+ * (including Tavily-fetched pages) so that all body-cited URLs have a chance to match.
  */
 export function filterSourcesByCited(
   body: string,
@@ -98,6 +99,5 @@ export function filterSourcesByCited(
   while ((match = linkPattern.exec(body)) !== null) {
     citedUrls.add(match[1]);
   }
-  const filtered = sources.filter((s) => citedUrls.has(s.url));
-  return filtered.length > 0 ? filtered : sources;
+  return sources.filter((s) => citedUrls.has(s.url));
 }

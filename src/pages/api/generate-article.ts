@@ -243,6 +243,7 @@ export const POST: APIRoute = async ({ request }) => {
     body: string;
     selectedTopic: string;
     selectedEntries: RssEntry[];
+    enrichedEntries?: RssEntry[];
   };
   try {
     if (translationSource) {
@@ -283,10 +284,14 @@ export const POST: APIRoute = async ({ request }) => {
 
   // --- Extract sources & trust level ----------------------------------------
   // In translation mode: inherit sources and trustLevel from the Japanese article.
-  // In full generation mode: derive from the LLM-selected RSS entries.
+  // In full generation mode: derive from the LLM-selected RSS entries plus any
+  // Tavily-enriched entries so that URLs cited from fetched docs resolve correctly.
   const rawSources = translationSource
     ? translationSource.sources
-    : extractSources(llmResult.selectedEntries);
+    : extractSources([
+        ...llmResult.selectedEntries,
+        ...(llmResult.enrichedEntries ?? []),
+      ]);
   const sources: ArticleSource[] = translationSource
     ? rawSources
     : filterSourcesByCited(llmResult.body, rawSources);
