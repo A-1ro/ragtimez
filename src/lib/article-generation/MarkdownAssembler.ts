@@ -11,19 +11,22 @@ export function buildMarkdown(
   trustLevel: "official" | "blog" | "speculative",
   lang: "ja" | "en" = "ja",
 ): string {
-  const sourcesYaml = sources
-    .map((s) => {
-      const title = s.title ? `\n    title: "${yamlEscape(s.title)}"` : "";
-      return `  - url: "${yamlEscape(s.url)}"${title}\n    type: "${s.type}"`;
-    })
-    .join("\n");
+  const sourcesYaml =
+    sources.length === 0
+      ? "sources: []"
+      : "sources:\n" +
+        sources
+          .map((s) => {
+            const title = s.title ? `\n    title: "${yamlEscape(s.title)}"` : "";
+            return `  - url: "${yamlEscape(s.url)}"${title}\n    type: "${s.type}"`;
+          })
+          .join("\n");
   const tagsYaml = llm.tags.map((t) => `  - "${yamlEscape(t)}"`).join("\n");
 
   return `---
 title: "${yamlEscape(llm.title)}"
 date: ${date}
 summary: "${yamlEscape(llm.summary)}"
-sources:
 ${sourcesYaml}
 trustLevel: "${trustLevel}"
 tags:
