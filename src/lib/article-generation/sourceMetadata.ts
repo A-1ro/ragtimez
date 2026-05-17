@@ -92,7 +92,8 @@ export function filterSourcesByCited(
   sources: ArticleSource[],
 ): ArticleSource[] {
   const citedUrls = new Set<string>();
-  const linkPattern = /\]\(([^)\s]+)\)/g;
+  // Handles standard `](url)`, title-bearing `](url "title")`, and angle-bracket `](<url>)` forms.
+  const linkPattern = /\]\(\s*<?([^>\s)]+)>?(?:\s[^)]*)?\)/g;
   let match;
   while ((match = linkPattern.exec(body)) !== null) {
     citedUrls.add(match[1]);
