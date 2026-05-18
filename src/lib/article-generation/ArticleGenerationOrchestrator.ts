@@ -113,6 +113,12 @@ export class ArticleGenerationOrchestrator {
 
       if (quality.score >= SOURCE_QUALITY_THRESHOLD) {
         console.log(`トピック採用: "${selection.topicSelection.topic}"`);
+        if (selection.topicSelection.isDomainFallback) {
+          console.warn(
+            `[DOMAIN FALLBACK] 採用トピックはAzure/RAG/LLM/AIエージェント以外のドメイン（AWS/GCP等）です。` +
+            `RSS取得ターゲット (crawlTargets.ts) の見直しを検討してください。Topic: "${selection.topicSelection.topic}"`,
+          );
+        }
         break;
       }
 

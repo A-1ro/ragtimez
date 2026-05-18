@@ -21,6 +21,7 @@ export interface TopicSelection {
   reason: string;
   indices: number[];
   keyNewFacts: string[];
+  isDomainFallback: boolean;
 }
 
 export class TopicSelector implements ITopicSelector {
@@ -77,6 +78,7 @@ export class TopicSelector implements ITopicSelector {
         '- "reason": why this is the best topic AND how it differs from past articles (1 sentence)\n' +
         '- "indices": array of 1-based entry numbers that are DIRECTLY relevant to this topic. STRICT LIMIT: include at most 5 entries. Only include as many entries as are genuinely relevant — do NOT pad to reach any minimum number; 1-2 entries with perfect relevance is better than 5 with mixed topics. STRICT RELEVANCE RULE: only include an entry if it contains technical details, announcements, or official documentation SPECIFICALLY about the chosen topic — not merely about the same time period or industry. FORBIDDEN entries (must be excluded regardless): entries about a different company\'s financials (funding rounds, equity deals, layoffs, earnings reports), entries about unrelated products or workforce events even from the same company, general market commentary or opinion pieces without technical substance. CROSS-COMPANY EXCLUSION (CRITICAL): Once the topic is identified as Company A\'s product or service, ALL entries about any other company\'s products, services, workforce, or announcements are FORBIDDEN — regardless of how recent, technical, or industry-adjacent they appear. Example: if the topic is "Amazon Lex Assisted NLU", entries from OpenAI, IBM, SpaceX, Meta, Google, or any non-Amazon source MUST be excluded. Only include entries that are directly about the chosen topic or provide official technical context for it from the same vendor or a directly referenced standards body. FORBIDDEN SOURCE TYPES (must always be excluded regardless of topic): ASMR content, meditation, wellness, or lifestyle pages (identified by: ASMR in title/URL, or words like "manifest", "relax", "sleep" in title); hackathon project writeups for a domain unrelated to the chosen topic (e.g., a CNC manufacturing entry when topic is voice interfaces); any source where the only overlap with the chosen topic is a single common English word (e.g., both contain "whisper") but subject matter is unrelated. CONCRETE EXAMPLES OF FORBIDDEN INCLUSIONS: if the topic is a medical AI framework, an entry titled "Nvidia commits $40B to equity deals" or "Oracle workers negotiate severance" MUST be excluded — they are factually unrelated even if they are recent news. If an entry is about a different product made by the same company as the chosen topic, it MUST be excluded. When in doubt, EXCLUDE the entry. Fewer indices with perfect relevance is strictly better than more indices with mixed topics.\n' +
         '- "keyNewFacts": array of 2-4 strings, each stating one SPECIFIC NEW fact from the selected entries: version numbers, exact node/server counts, newly removed dependencies, new API or feature names, architectural changes, or benchmark figures. These must be concrete and extractable from the source text — do NOT write vague summaries like "improved performance". Example: ["Supports up to 1,000 nodes GA, 4,000 nodes planned later in 2026", "Local control plane added — no longer requires Azure Arc connectivity", "External SAN (Fibre Channel / iSCSI) now supported as shared block storage"]\n' +
+        '- "isDomainFallback": boolean — true if the selected topic is primarily about AWS or GCP (not Azure, RAG, LLM, or AI Agent), indicating this selection is a domain fallback because no primary-focus topic was available in the news list. false otherwise.\n' +
         "Output only the JSON object, no markdown fences.",
       user: avoidBlock + rejectedBlock + contextForSelection,
       maxTokens: 512,
@@ -108,6 +110,7 @@ export class TopicSelector implements ITopicSelector {
               .filter((f): f is string => typeof f === "string")
               .slice(0, 6)
           : [],
+        isDomainFallback: parsed.isDomainFallback === true,
       };
     } catch {
       console.warn(`Topic selection parse failed, using fallback. Raw: ${topicSelectionRaw.slice(0, 200)}`);
@@ -117,6 +120,7 @@ export class TopicSelector implements ITopicSelector {
         // Limit to top 5 to prevent all RSS/Tavily entries from flooding frontmatter sources.
         indices: input.entries.slice(0, 5).map((_, index) => index + 1),
         keyNewFacts: [],
+        isDomainFallback: false,
       };
     }
 
