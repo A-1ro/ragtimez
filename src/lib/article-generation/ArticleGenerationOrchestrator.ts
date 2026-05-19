@@ -166,10 +166,29 @@ export class ArticleGenerationOrchestrator {
     }
 
     const hasFullText = finalAttempt.fullTextMap !== undefined && finalAttempt.fullTextMap.size > 0;
-    const context = this.researchEnricher.buildContext(
-      finalAttempt.selectedEntries,
+
+    // Build context in two tiers:
+    // 1. PRIMARY SOURCES — the 1-5 entries TopicSelector identified as being about the chosen topic.
+    //    The article must focus exclusively on these.
+    // 2. SUPPORTING CONTEXT — additional enriched entries (Tavily, related RSS).
+    //    These are passed as background only; the LLM must NOT write sections about them.
+    const primaryContext = this.researchEnricher.buildContext(
+      finalAttempt.topicEntries,
       finalAttempt.fullTextMap,
     );
+    const topicUrls = new Set(finalAttempt.topicEntries.map((e) => e.link));
+    const supportingEntries = finalAttempt.selectedEntries.filter(
+      (e) => !topicUrls.has(e.link),
+    );
+    const supportingContext =
+      supportingEntries.length > 0
+        ? "\n\n---\n## SUPPORTING CONTEXT ONLY\n" +
+          "The following entries provide technical background for the topic above. " +
+          "DO NOT write article sections or paragraphs about them. " +
+          "You may reference a specific detail from them ONLY if it directly supports a point about the FOCUSED TOPIC — one sentence maximum per reference.\n\n" +
+          this.researchEnricher.buildContext(supportingEntries, finalAttempt.fullTextMap)
+        : "";
+
     // Inject topic focus and key facts so the draft generator knows what to emphasize.
     // topicDirective gives the editorial angle (why this topic was chosen).
     // newFactsBlock lists specific facts the LLM must weave into the article body.
@@ -183,7 +202,7 @@ export class ArticleGenerationOrchestrator {
           keyNewFacts.map((f) => `- ${f}`).join("\n") +
           "\n\n"
         : "";
-    const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
+    const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${primaryContext}${supportingContext}`;
 
     // Step 2a: generate draft body first
     const draftBody = await this.draftGenerator.generate({
