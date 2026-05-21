@@ -32,6 +32,20 @@ export async function postProcess(
   // These are prompt instructions, not article content.
   result = result.replace(/\*\*MANDATORY[^*\n]*\*\*\n(?:- [^\n]*\n)*\n?/g, "");
 
+  // Detect section-ending citations that reference URLs not provided in the context entries.
+  // These indicate the LLM used pre-training knowledge to fabricate a citation (FABRICATED CITATION BAN violation).
+  const knownUrls = new Set(entries.map((e) => e.link));
+  const sectionCitationPattern = /[（(](?:出典|Source):\s*\[[^\]]*\]\(([^)]+)\)[）)]/g;
+  let scMatch;
+  while ((scMatch = sectionCitationPattern.exec(result)) !== null) {
+    const citedUrl = scMatch[1];
+    if (citedUrl && !knownUrls.has(citedUrl)) {
+      console.warn(
+        `[FABRICATED CITATION] 出典URLがコンテキスト外です（事前学習知識からの捏造の可能性）: ${citedUrl}`,
+      );
+    }
+  }
+
   const segments = result.split(/(```[\s\S]*?```)/g);
   result = segments.map((segment, i) => {
     if (i % 2 === 1) return segment;

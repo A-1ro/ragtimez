@@ -183,7 +183,22 @@ export class ArticleGenerationOrchestrator {
           keyNewFacts.map((f) => `- ${f}`).join("\n") +
           "\n\n"
         : "";
-    const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
+
+    // Identify which 1-based indices in selectedEntries correspond to the topic-defining entries
+    // (topicEntries). These are the authoritative sources for the FOCUSED TOPIC; all others are
+    // supplementary Tavily-enriched entries and must not define new sections on their own.
+    const primaryUrls = new Set(finalAttempt.topicEntries.map((e) => e.link));
+    const primaryIndices: number[] = [];
+    finalAttempt.selectedEntries.forEach((e, i) => {
+      if (primaryUrls.has(e.link)) primaryIndices.push(i + 1);
+    });
+    const primarySourcesBlock =
+      primaryIndices.length > 0
+        ? `PRIMARY SOURCE INDICES (these define the topic scope — the article must focus on these): [${primaryIndices.join(", ")}]\n` +
+          `All other [Source] blocks are supplementary — cite them only if directly relevant to the same technology as the FOCUSED TOPIC. Do NOT write a section whose sole basis is a supplementary source.\n\n`
+        : "";
+
+    const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${primarySourcesBlock}${newFactsBlock}${context}`;
 
     // Step 2a: generate draft body first
     const draftBody = await this.draftGenerator.generate({
