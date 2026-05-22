@@ -283,10 +283,14 @@ export const POST: APIRoute = async ({ request }) => {
 
   // --- Extract sources & trust level ----------------------------------------
   // In translation mode: inherit sources and trustLevel from the Japanese article.
-  // In full generation mode: derive from the LLM-selected RSS entries.
+  // In full generation mode: derive from the LLM context entries.
+  // allContextEntries (enriched, up to 20) is used so that Tavily-enriched entries the LLM
+  // correctly cites in the body can appear in frontmatter. filterSourcesByCited then trims
+  // this set to only those actually referenced by URL in the generated body, preventing
+  // unrelated enriched entries from contaminating the source list.
   const rawSources = translationSource
     ? translationSource.sources
-    : extractSources(llmResult.selectedEntries);
+    : extractSources(llmResult.allContextEntries ?? llmResult.selectedEntries);
   const sources: ArticleSource[] = translationSource
     ? rawSources
     : filterSourcesByCited(llmResult.body, rawSources);
