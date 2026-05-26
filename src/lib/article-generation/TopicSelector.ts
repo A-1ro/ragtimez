@@ -78,7 +78,12 @@ export class TopicSelector implements ITopicSelector {
         '- "reason": why this is the best topic AND how it differs from past articles (1 sentence)\n' +
         '- "indices": array of 1-based entry numbers that are DIRECTLY relevant to this topic. STRICT LIMIT: include at most 5 entries. Only include as many entries as are genuinely relevant — do NOT pad to reach any minimum number; 1-2 entries with perfect relevance is better than 5 with mixed topics. STRICT RELEVANCE RULE: only include an entry if it contains technical details, announcements, or official documentation SPECIFICALLY about the chosen topic — not merely about the same time period or industry. FORBIDDEN entries (must be excluded regardless): entries about a different company\'s financials (funding rounds, equity deals, layoffs, earnings reports), entries about unrelated products or workforce events even from the same company, general market commentary or opinion pieces without technical substance. CROSS-COMPANY EXCLUSION (CRITICAL): Once the topic is identified as Company A\'s product or service, ALL entries about any other company\'s products, services, workforce, or announcements are FORBIDDEN — regardless of how recent, technical, or industry-adjacent they appear. Example: if the topic is "Amazon Lex Assisted NLU", entries from OpenAI, IBM, SpaceX, Meta, Google, or any non-Amazon source MUST be excluded. Only include entries that are directly about the chosen topic or provide official technical context for it from the same vendor or a directly referenced standards body. FORBIDDEN SOURCE TYPES (must always be excluded regardless of topic): ASMR content, meditation, wellness, or lifestyle pages (identified by: ASMR in title/URL, or words like "manifest", "relax", "sleep" in title); hackathon project writeups for a domain unrelated to the chosen topic (e.g., a CNC manufacturing entry when topic is voice interfaces); any source where the only overlap with the chosen topic is a single common English word (e.g., both contain "whisper") but subject matter is unrelated. CONCRETE EXAMPLES OF FORBIDDEN INCLUSIONS: if the topic is a medical AI framework, an entry titled "Nvidia commits $40B to equity deals" or "Oracle workers negotiate severance" MUST be excluded — they are factually unrelated even if they are recent news. If an entry is about a different product made by the same company as the chosen topic, it MUST be excluded. When in doubt, EXCLUDE the entry. Fewer indices with perfect relevance is strictly better than more indices with mixed topics.\n' +
         '- "keyNewFacts": array of 2-4 strings, each stating one SPECIFIC NEW fact from the selected entries: version numbers, exact node/server counts, newly removed dependencies, new API or feature names, architectural changes, or benchmark figures. These must be concrete and extractable from the source text — do NOT write vague summaries like "improved performance". Example: ["Supports up to 1,000 nodes GA, 4,000 nodes planned later in 2026", "Local control plane added — no longer requires Azure Arc connectivity", "External SAN (Fibre Channel / iSCSI) now supported as shared block storage"]\n' +
-        '- "isDomainFallback": boolean — true if the selected topic is primarily about AWS or GCP (not Azure, RAG, LLM, or AI Agent), indicating this selection is a domain fallback because no primary-focus topic was available in the news list. false otherwise.\n' +
+        '- "isDomainFallback": boolean — true if the selected topic is primarily about AWS or GCP (not Azure, RAG, LLM, or AI Agent), indicating this selection is a domain fallback because no primary-focus topic was available in the news list. false otherwise.\n\n' +
+        'CROSS-COMPANY SELF-CHECK (mandatory before outputting):\n' +
+        '1. Identify the company/organization that owns the chosen topic (e.g., "Amazon" for Bedrock products, "Microsoft" for Azure).\n' +
+        '2. For each index in your list, ask: "Is this entry DIRECTLY about a product or service from that SAME company?"\n' +
+        '3. Remove any index where the answer is "No". Entries about other companies\' products, workforce, or announcements MUST be excluded.\n' +
+        '4. Only after completing steps 1-3, output the final JSON.\n\n' +
         "Output only the JSON object, no markdown fences.",
       user: avoidBlock + rejectedBlock + contextForSelection,
       maxTokens: 512,
@@ -127,12 +132,76 @@ export class TopicSelector implements ITopicSelector {
     const validIndices = topicSelection.indices.filter(
       (idx) => typeof idx === "number" && idx >= 1 && idx <= input.entries.length,
     );
+    const filteredIndices = this.filterCrossCompanyIndices(validIndices, input.entries);
     const selectedEntries =
-      validIndices.length > 0
-        ? validIndices.map((idx) => input.entries[idx - 1])
+      filteredIndices.length > 0
+        ? filteredIndices.map((idx) => input.entries[idx - 1])
         : input.entries;
 
     return { topicSelection, selectedEntries };
+  }
+
+  /**
+   * Enforces the cross-company exclusion rule at the TypeScript level.
+   *
+   * If more than 50% of the candidate indices belong to a single root domain
+   * (e.g. "amazon.com"), all indices from OTHER root domains are removed.
+   * This is a hard guard that runs after LLM output and catches cases where
+   * the model ignores the CROSS-COMPANY EXCLUSION instruction in the prompt.
+   *
+   * Returns the original indices unchanged when no single domain holds a
+   * strict majority — that case represents a legitimate multi-company topic.
+   */
+  private filterCrossCompanyIndices(indices: number[], entries: RssEntry[]): number[] {
+    if (indices.length === 0) return indices;
+
+    // Map each 1-based index to its root domain (last 2 hostname segments).
+    const getRootDomain = (url: string): string => {
+      try {
+        const hostname = new URL(url).hostname.toLowerCase();
+        const parts = hostname.split(".");
+        return parts.length >= 2 ? parts.slice(-2).join(".") : hostname;
+      } catch {
+        return url;
+      }
+    };
+
+    // Count occurrences of each root domain among the candidate indices.
+    const domainCounts = new Map<string, number>();
+    for (const idx of indices) {
+      const entry = entries[idx - 1];
+      const domain = getRootDomain(entry.link);
+      domainCounts.set(domain, (domainCounts.get(domain) ?? 0) + 1);
+    }
+
+    // Find the dominant domain (if any holds a strict majority).
+    let dominantDomain: string | null = null;
+    for (const [domain, count] of domainCounts.entries()) {
+      if (count / indices.length > 0.5) {
+        dominantDomain = domain;
+        break;
+      }
+    }
+
+    // No single domain dominates — keep all indices (legitimate multi-company topic).
+    if (dominantDomain === null) return indices;
+
+    // Filter out indices from non-dominant domains.
+    const filtered = indices.filter((idx) => {
+      const entry = entries[idx - 1];
+      return getRootDomain(entry.link) === dominantDomain;
+    });
+
+    const removed = indices.filter((idx) => !filtered.includes(idx));
+    if (removed.length > 0) {
+      console.log(
+        `[TopicSelector] Cross-company filter: dominant domain="${dominantDomain}", ` +
+          `removed ${removed.length} index(es) from other domains: ` +
+          removed.map((idx) => `${idx}(${getRootDomain(entries[idx - 1].link)})`).join(", "),
+      );
+    }
+
+    return filtered;
   }
 
   private buildContext(entries: RssEntry[]): string {
