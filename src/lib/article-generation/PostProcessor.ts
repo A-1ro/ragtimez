@@ -1,11 +1,33 @@
 import type { RssEntry } from "./types";
 
+/**
+ * Extracts all Markdown citation URLs from the article body and logs warnings
+ * for any that don't appear in the provided entries list. This catches cases
+ * where the LLM cites off-topic or hallucinated sources.
+ */
+function validateCitationUrls(body: string, entries: RssEntry[]): void {
+  const entryUrls = new Set(entries.map((e) => e.link));
+  // Match both Japanese （出典: [text](url)） and English (Source: [text](url)) citation patterns
+  const citationPattern = /\((?:出典|Source):\s*\[.*?\]\((https?:\/\/[^)]+)\)\s*\)/g;
+  let match: RegExpExecArray | null;
+  while ((match = citationPattern.exec(body)) !== null) {
+    const citedUrl = match[1];
+    if (!entryUrls.has(citedUrl)) {
+      console.warn(
+        `[PostProcessor] 引用URLがソースリストに存在しません（オフトピックまたは捏造の可能性）: ${citedUrl}`,
+      );
+    }
+  }
+}
+
 export async function postProcess(
   body: string,
   entries: RssEntry[],
   db: D1Database,
 ): Promise<string> {
   let result = body;
+
+  validateCitationUrls(body, entries);
 
   const katakana = await db.prepare(
     "SELECT wrong_form, correct_form FROM postprocess_katakana"
