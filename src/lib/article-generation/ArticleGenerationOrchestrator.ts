@@ -198,7 +198,7 @@ export class ArticleGenerationOrchestrator {
     let finalBody = draftBody;
     try {
       if (input.db) {
-        finalBody = await postProcess(draftBody, finalAttempt.selectedEntries, input.db);
+        finalBody = await postProcess(draftBody, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
         console.log(`Step 2b post-processing complete: ${finalBody.length} chars`);
       } else {
         console.warn("Step 2b post-processing skipped: db not provided");
