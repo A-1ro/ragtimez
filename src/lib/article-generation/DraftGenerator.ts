@@ -15,9 +15,18 @@ export class DraftGenerator implements IDraftGenerator {
     lang: "ja" | "en";
     hasFullText: boolean;
   }): Promise<string> {
+    const summaryOnlyInstructions =
+      input.lang === "en"
+        ? "- The context contains only article summaries. Be explicit when you lack technical detail. Do NOT write code blocks, API signatures, or SDK class names — none of these can be verified from summaries alone.\n" +
+          "- CROSS-PRODUCT INFERENCE BAN (CRITICAL): If a company is known for product A (e.g., SpaceX and satellite internet), do NOT infer or state that their other services also use product A unless the source explicitly says so. Writing infrastructure speculation based on what a company is known for — rather than what the source explicitly states — is hallucination and causes article rejection.\n" +
+          "- UNKNOWN DETAIL SPECULATION BAN (CRITICAL): When a source does not disclose technical details, write 'The source does not disclose details about [topic]' once and stop. Do NOT fill sections with speculation about 'possible architectures', 'technical possibilities', or 'how it might work' — a section built entirely on unverified speculation is hallucination and causes article rejection.\n"
+        : "- コンテキストには記事のサマリーのみが含まれています。技術的な詳細が不明な場合は明示すること。サマリーだけでは検証できないため、コードブロック・APIシグネチャ・SDKクラス名は記述しないこと。\n" +
+          "- **企業の他事業からの推論禁止（絶対禁止）**: ある企業が製品Aで知られていても（例：SpaceXと衛星通信）、ソースに明示的な記述がない限り当該企業の別サービスにも製品Aが使われていると推論・記述してはならない。企業の一般的な評判や他の事業ラインからインフラ構成・技術スタックを推測することは幻覚である。この種の推論は記事却下となる。\n" +
+          "- **詳細不明時の推測展開禁止（絶対禁止）**: ソースに技術詳細の記載がない場合、「ソースに[トピック]の詳細は記載されていない」と1文で述べて止めること。「想定されるアーキテクチャ」「技術的な可能性」「〜と考えられる」でセクション全体を埋めることは幻覚に相当し記事却下となる。\n";
+
     const fullTextInstruction = input.hasFullText
       ? "- The context includes full article body text. Use specific details, version numbers, API signatures, and benchmarks from the source text. Include code examples ONLY if they appear verbatim in the source — do NOT reconstruct or infer code that is not explicitly present.\n"
-      : "- The context contains only article summaries. Be explicit when you lack technical detail. Do NOT write code blocks, API signatures, or SDK class names — none of these can be verified from summaries alone.\n";
+      : summaryOnlyInstructions;
 
     const system =
       input.lang === "en"
