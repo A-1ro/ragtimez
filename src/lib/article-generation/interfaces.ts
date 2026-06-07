@@ -35,7 +35,8 @@ export interface IResearchEnricher {
   evaluateSourceQuality(
     selectedEntries: RssEntry[],
     fullTextMap: Map<string, string> | undefined,
-  ): { score: number; details: { fullTextCount: number; officialCount: number; totalChars: number } };
+    topic?: string,
+  ): { score: number; details: { fullTextCount: number; officialCount: number; totalChars: number; topicRelevanceRatio: number } };
   buildContext(entries: RssEntry[], fullTextMap?: Map<string, string>): string;
 }
 

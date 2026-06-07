@@ -195,7 +195,8 @@ export class ResearchEnricher implements IResearchEnricher {
   evaluateSourceQuality(
     selectedEntries: RssEntry[],
     fullTextMap: Map<string, string> | undefined,
-  ): { score: number; details: { fullTextCount: number; officialCount: number; totalChars: number } } {
+    topic?: string,
+  ): { score: number; details: { fullTextCount: number; officialCount: number; totalChars: number; topicRelevanceRatio: number } } {
     const fullTextCount = fullTextMap
       ? selectedEntries.filter((entry) => fullTextMap.has(entry.link)).length
       : 0;
@@ -215,7 +216,47 @@ export class ResearchEnricher implements IResearchEnricher {
     if (officialCount >= 1) score++;
     if (totalChars >= 1500) score++;
 
-    return { score, details: { fullTextCount, officialCount, totalChars } };
+    // Check that source content actually covers the chosen topic.
+    // When all sources are topically unrelated, the LLM will fall back on pre-training
+    // knowledge and fabricate citations — penalize such selections to force a retry.
+    let topicRelevanceRatio = 1.0;
+    if (topic) {
+      const stopWords = new Set([
+        "this", "that", "with", "from", "have", "about", "which", "will", "what",
+        "when", "where", "more", "also", "using", "used", "into", "over", "than",
+        "their", "they", "been", "some", "each", "such", "then", "those",
+      ]);
+      const topicWords = topic
+        .toLowerCase()
+        .replace(/[^\w\s]/g, " ")
+        .split(/\s+/)
+        .filter((w) => w.length > 3 && !stopWords.has(w));
+
+      if (topicWords.length > 0) {
+        const allContent = selectedEntries
+          .map((e) => {
+            const fullText = fullTextMap?.get(e.link);
+            return `${e.title} ${fullText ?? e.summary ?? ""}`;
+          })
+          .join(" ")
+          .toLowerCase();
+
+        const matchCount = topicWords.filter((word) => allContent.includes(word)).length;
+        topicRelevanceRatio = matchCount / topicWords.length;
+
+        if (topicRelevanceRatio < 0.3) {
+          // Sources do not mention the chosen topic — heavy penalty forces topic retry.
+          score = Math.max(0, score - 2);
+          console.warn(
+            `[ResearchEnricher] トピック関連性が低い: "${topic}" — ` +
+            `関連度=${topicRelevanceRatio.toFixed(2)} (${matchCount}/${topicWords.length}語が一致)。` +
+            `このトピックはソース内容に裏付けがなく却下します。`,
+          );
+        }
+      }
+    }
+
+    return { score, details: { fullTextCount, officialCount, totalChars, topicRelevanceRatio } };
   }
 
   buildContext(entries: RssEntry[], fullTextMap?: Map<string, string>): string {

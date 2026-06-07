@@ -44,5 +44,31 @@ export async function postProcess(
     });
   }).join("");
 
+  // Detect and strip in-body citation blocks that reference URLs not present in the provided
+  // source context. These indicate the LLM fabricated citations from pre-training knowledge,
+  // violating the FABRICATED CITATION BAN in the system prompt.
+  const sourceUrlSet = new Set(entries.map((e) => e.link));
+  result = result.replace(
+    /[（(](?:出典|Source):[^）)\n]*[）)]/g,
+    (citationBlock) => {
+      const linkPattern = /\]\((https?:\/\/[^)]+)\)/g;
+      let linkMatch: RegExpExecArray | null;
+      const invalidUrls: string[] = [];
+      while ((linkMatch = linkPattern.exec(citationBlock)) !== null) {
+        const url = linkMatch[1].trim();
+        if (!sourceUrlSet.has(url)) {
+          invalidUrls.push(url);
+        }
+      }
+      if (invalidUrls.length > 0) {
+        for (const url of invalidUrls) {
+          console.warn(`[PostProcessor] 捏造引用URL検出・除去: ${url}`);
+        }
+        return "";
+      }
+      return citationBlock;
+    },
+  );
+
   return result;
 }

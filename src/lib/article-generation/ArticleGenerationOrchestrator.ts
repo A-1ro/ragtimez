@@ -7,7 +7,7 @@ import type {
   SearchUsageBudget,
   ITopicSelector,
 } from "./interfaces";
-import type { RecentArticle } from "./TopicSelector";
+import type { RecentArticle, TopicSelection } from "./TopicSelector";
 import { checkTopicDuplication, normalizeUrl } from "./topicDeduplication";
 import type { RssEntry } from "./types";
 
@@ -37,7 +37,7 @@ export class ArticleGenerationOrchestrator {
   }> {
     const rejectedTopics: string[] = [];
     let bestAttempt: {
-      topicSelection: { topic: string; reason: string; indices: number[] };
+      topicSelection: TopicSelection;
       topicEntries: RssEntry[];
       selectedEntries: RssEntry[];
       fullTextMap?: Map<string, string>;
@@ -94,9 +94,10 @@ export class ArticleGenerationOrchestrator {
       const quality = this.researchEnricher.evaluateSourceQuality(
         enriched.selectedEntries,
         enriched.fullTextMap,
+        selection.topicSelection.topic,
       );
       console.log(
-        `ソース品質評価（試行 ${attempt + 1}/${maxAttempts}）: score=${quality.score}/${SOURCE_QUALITY_THRESHOLD}, fullText=${quality.details.fullTextCount}, official=${quality.details.officialCount}, totalChars=${quality.details.totalChars}`,
+        `ソース品質評価（試行 ${attempt + 1}/${maxAttempts}）: score=${quality.score}/${SOURCE_QUALITY_THRESHOLD}, fullText=${quality.details.fullTextCount}, official=${quality.details.officialCount}, totalChars=${quality.details.totalChars}, topicRelevance=${quality.details.topicRelevanceRatio.toFixed(2)}`,
       );
 
       const currentAttempt = {
