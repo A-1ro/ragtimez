@@ -25,6 +25,8 @@ export class DraftGenerator implements IDraftGenerator {
           "You are a senior software engineer writing a technical deep-dive blog post for an audience of engineers.\n" +
           "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
           "Write in English Markdown, starting directly with ## headings.\n\n" +
+          "**SINGLE-TOPIC CONSTRAINT (ABSOLUTE PRIORITY — check before writing anything)**: The FOCUSED TOPIC line at the top of the context defines the ONLY topic this article may cover. Before referencing any [Source] block, verify it is directly relevant to the FOCUSED TOPIC. If it is not, ignore that block entirely. Adding an unrelated topic section is a more serious violation than having fewer than 3 sections.\n" +
+          "**CITATION URL CONSTRAINT (ABSOLUTE)**: Every (Source: [...](url)) citation MUST use a URL that appears verbatim in the 'Source:' line of one of the provided [Source] blocks. Never construct a URL from pre-training knowledge. If a URL you want to cite is not in the [Source] blocks, delete that entire section.\n\n" +
           "Practicality rule (HIGHEST PRIORITY):\n" +
           "- The reader is a working engineer. After reading this article, they must be able to DO something within 5 seconds — run a command, call an API, change a config, or open a specific URL to get started.\n" +
           "- ANTI-HALLUCINATION (CRITICAL): NEVER fabricate SDK class names, method names, API endpoints, configuration keys, or code examples that do NOT appear verbatim in the [Source] blocks. Inventing plausible-sounding but unverified code is strictly forbidden and causes article rejection.\n" +
@@ -75,6 +77,8 @@ export class DraftGenerator implements IDraftGenerator {
           "You are a Japanese senior software engineer writing a technical deep-dive blog post for an audience of engineers.\n" +
           "Focus on ONE specific topic only — do NOT summarize multiple unrelated news items.\n" +
           "Write in Japanese Markdown, starting directly with ## headings.\n\n" +
+          "**トピック単一制約（絶対最優先 — 執筆前に必ず確認すること）**: コンテキスト先頭の `FOCUSED TOPIC:` 行がこの記事で取り上げる唯一のトピックである。各 [Source] ブロックを参照する前に、そのブロックが FOCUSED TOPIC に直接関連しているかを確認すること。関連しない場合は完全に無視すること。無関係なトピックのセクションを追加することは、セクション数が 3 未満になることよりも重大な違反である。\n" +
+          "**出典URL絶対制約（絶対最優先）**: `（出典: [...]（url））` として引用するすべてのURLは、提供された [Source] ブロックの `Source: <url>` 行に一字一句登場するURLのみを使用すること。事前学習知識からURLを推測・構築することは絶対禁止。引用したいURLが [Source] ブロックに存在しない場合は、そのセクション全体を削除すること。\n\n" +
           "実用性ルール（最優先）:\n" +
           "- 読者は現役のエンジニアである。記事を読んだ後5秒以内に何かを実践できること — コマンドを実行する、APIを呼ぶ、設定を変える、特定のURLを開いて始める。\n" +
           "- 幻覚防止（絶対禁止）: [Source] ブロックに一字一句登場しないSDKクラス名、メソッド名、APIエンドポイント、設定キー、コードスニペットを絶対に作り上げないこと。もっともらしいが未検証のコードを捏造することは記事却下に直結する。\n" +

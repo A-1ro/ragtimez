@@ -32,6 +32,21 @@ export async function postProcess(
   // These are prompt instructions, not article content.
   result = result.replace(/\*\*MANDATORY[^*\n]*\*\*\n(?:- [^\n]*\n)*\n?/g, "");
 
+  // Validate citation URLs: warn when a cited URL is not among the provided source entries.
+  // This detects fabricated citations generated from pre-training knowledge.
+  const entryUrls = new Set(entries.map((e) => e.link));
+  // Matches both full-width （出典: [...]（url)） used in Japanese and ASCII (Source: [...](url)) in English.
+  const citationPattern = /[（(](?:出典|Source): \[[^\]]*\]\(([^)]+)\)[）)]/g;
+  let citationMatch: RegExpExecArray | null;
+  while ((citationMatch = citationPattern.exec(result)) !== null) {
+    const citedUrl = citationMatch[1];
+    if (!entryUrls.has(citedUrl)) {
+      console.warn(
+        `[CITATION VALIDATION] 未検証の出典URL: "${citedUrl}" — 提供されたソースエントリに存在しないURLが出典として使用されています。事前学習知識からの捏造の可能性があります。`,
+      );
+    }
+  }
+
   const segments = result.split(/(```[\s\S]*?```)/g);
   result = segments.map((segment, i) => {
     if (i % 2 === 1) return segment;
