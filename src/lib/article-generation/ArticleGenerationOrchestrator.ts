@@ -209,6 +209,24 @@ export class ArticleGenerationOrchestrator {
       );
     }
 
+    // Step 2b-check: detect body citations to URLs not in topicEntries (frontmatter sources).
+    // This is a diagnostic warning — the source is still cited in the body, but it won't appear
+    // in the frontmatter, creating a visible inconsistency for readers.
+    const topicEntryUrls = new Set(finalAttempt.topicEntries.map((e) => e.link));
+    const citedUrlPattern = /\(出典:.*?\]\((https?:\/\/[^\)]+)\)\)/g;
+    const enCitedUrlPattern = /\(Source:.*?\]\((https?:\/\/[^\)]+)\)\)/g;
+    for (const pattern of [citedUrlPattern, enCitedUrlPattern]) {
+      let match: RegExpExecArray | null;
+      while ((match = pattern.exec(finalBody)) !== null) {
+        const citedUrl = match[1];
+        if (!topicEntryUrls.has(citedUrl)) {
+          console.warn(
+            `[SOURCE MISMATCH] 本文が frontmatter に含まれない URL を引用しています: ${citedUrl} — トピックとは無関係なソースが記事に混入した可能性があります。TopicSelector の indices または DraftGenerator のプロンプトを確認してください。`,
+          );
+        }
+      }
+    }
+
     // Step 2c: generate metadata from the final body to ensure title matches content
     const metadata = await this.metadataGenerator.generate({
       draftBody: finalBody,
