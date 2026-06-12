@@ -132,7 +132,117 @@ export class TopicSelector implements ITopicSelector {
         ? validIndices.map((idx) => input.entries[idx - 1])
         : input.entries;
 
-    return { topicSelection, selectedEntries };
+    const audited =
+      selectedEntries.length > 1
+        ? await this.auditEntryRelevance(
+            topicSelection.topic,
+            selectedEntries,
+            topicSelection.keyNewFacts,
+          )
+        : { entries: selectedEntries, keyNewFacts: topicSelection.keyNewFacts };
+
+    return {
+      topicSelection: { ...topicSelection, keyNewFacts: audited.keyNewFacts },
+      selectedEntries: audited.entries,
+    };
+  }
+
+  /**
+   * Second-pass relevance audit with a small, focused prompt.
+   * The main selection prompt has grown so large that its relevance rules are routinely
+   * ignored, which is the root cause of multi-topic roundup articles. A dedicated
+   * keep/drop audit per entry is followed far more reliably than rules buried in a
+   * monolithic prompt. keyNewFacts are audited in the same call: facts extracted from a
+   * dropped entry must not survive, or the orchestrator would inject them as MANDATORY
+   * draft context with no corresponding [Source] block.
+   * Fails open: on any LLM or parse error the original entries and facts are kept.
+   */
+  private async auditEntryRelevance(
+    topic: string,
+    entries: RssEntry[],
+    keyNewFacts: string[],
+  ): Promise<{ entries: RssEntry[]; keyNewFacts: string[] }> {
+    try {
+      const entryList = entries
+        .map(
+          (entry, index) =>
+            `[${index + 1}] ${sanitizeExternalContent(entry.title).slice(0, MAX_TITLE_LENGTH)} (${entry.link})`,
+        )
+        .join("\n");
+      const factList = keyNewFacts
+        .map((fact, index) => `[${index + 1}] ${fact}`)
+        .join("\n");
+
+      const raw = await this.llmClient.generateText({
+        model: TOPIC_SELECTION_MODEL,
+        system:
+          "You are a strict relevance auditor for a single-topic technical deep-dive blog.\n" +
+          "Given a TOPIC and a numbered list of news entries, decide for each entry whether it covers the EXACT SAME product, service, or announcement as the TOPIC.\n" +
+          "Exclude an entry if ANY of these apply:\n" +
+          "- it is about a different company than the one in the TOPIC\n" +
+          "- it is about a different product or service from the same company\n" +
+          "- it is financial, workforce, or market news (funding, layoffs, earnings, equity deals)\n" +
+          "- it is lifestyle or unrelated content that merely shares a word with the TOPIC\n" +
+          "A numbered FACTS list extracted from these entries may also be provided. A fact survives ONLY if it is supported by one of the KEPT entries; facts that originate from an excluded entry must be dropped.\n" +
+          'Output ONLY JSON: {"keep": [entry numbers to keep], "keepFacts": [fact numbers supported by the kept entries]}. If no FACTS list is provided, output "keepFacts": []. When in doubt about an entry, exclude it.',
+        user:
+          `TOPIC: ${topic}\n\nEntries:\n${entryList}` +
+          (keyNewFacts.length > 0 ? `\n\nFacts:\n${factList}` : ""),
+        maxTokens: 256,
+        temperature: 0,
+      });
+
+      const cleaned = raw
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed.keep)) return { entries, keyNewFacts };
+
+      const keep = new Set(
+        (parsed.keep as unknown[]).filter(
+          (n): n is number => typeof n === "number" && n >= 1 && n <= entries.length,
+        ),
+      );
+      if (keep.size === entries.length) {
+        return { entries, keyNewFacts };
+      }
+
+      // Entries were dropped — apply the fact audit so no MANDATORY fact outlives its source.
+      const keptFacts = Array.isArray(parsed.keepFacts)
+        ? keyNewFacts.filter((_, index) =>
+            (parsed.keepFacts as unknown[]).some(
+              (n) => typeof n === "number" && n === index + 1,
+            ),
+          )
+        : keyNewFacts;
+      for (const fact of keyNewFacts) {
+        if (!keptFacts.includes(fact)) {
+          console.warn(`関連性監査で除外された事実: ${fact}`);
+        }
+      }
+
+      if (keep.size === 0) {
+        // The first entry anchors the chosen topic; never drop everything.
+        console.warn(`関連性監査が全エントリを除外。先頭エントリのみ保持: "${topic}"`);
+        return { entries: entries.slice(0, 1), keyNewFacts: keptFacts };
+      }
+
+      for (const [index, entry] of entries.entries()) {
+        if (!keep.has(index + 1)) {
+          console.warn(`関連性監査で除外: ${entry.title} (${entry.link})`);
+        }
+      }
+      return {
+        entries: entries.filter((_, index) => keep.has(index + 1)),
+        keyNewFacts: keptFacts,
+      };
+    } catch (err) {
+      console.warn(
+        `関連性監査失敗（全エントリ保持で続行）: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return { entries, keyNewFacts };
+    }
   }
 
   private buildContext(entries: RssEntry[]): string {

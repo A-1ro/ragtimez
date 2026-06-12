@@ -85,11 +85,15 @@ export function extractSources(entries: RssEntry[]): ArticleSource[] {
 /**
  * Filters sources to only those whose URLs appear in the article body as Markdown links.
  * Prevents irrelevant topic-selector entries from contaminating frontmatter.
- * Falls back to the full list if no URLs match (e.g., model used bare URLs).
+ * If no URLs match (e.g., model used bare URLs), falls back to `fallbackSources` when
+ * provided — callers passing a broad candidate list (all LLM context entries) should
+ * supply the narrow topic-entry list here so the broad list never floods frontmatter —
+ * otherwise to the full candidate list.
  */
 export function filterSourcesByCited(
   body: string,
   sources: ArticleSource[],
+  fallbackSources?: ArticleSource[],
 ): ArticleSource[] {
   const citedUrls = new Set<string>();
   // Handles standard `](url)`, title-bearing `](url "title")`, and angle-bracket `](<url>)` forms.
@@ -99,5 +103,6 @@ export function filterSourcesByCited(
     citedUrls.add(match[1]);
   }
   const filtered = sources.filter((s) => citedUrls.has(s.url));
-  return filtered.length > 0 ? filtered : sources;
+  if (filtered.length > 0) return filtered;
+  return fallbackSources && fallbackSources.length > 0 ? fallbackSources : sources;
 }

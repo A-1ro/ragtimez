@@ -134,11 +134,18 @@ export class ResearchEnricher implements IResearchEnricher {
       input.searchBudget.searchCalls += 1;
       console.log(`Tavily 公式ドキュメント検索結果: ${additionalSearchResults.length} 件`);
 
-      if (additionalSearchResults.length === 0) {
+      const relevantResults = this.filterToAllowedDomains(additionalSearchResults, selectedEntries);
+      if (relevantResults.length < additionalSearchResults.length) {
+        console.log(
+          `Tavily 検索結果ドメインフィルタ: ${additionalSearchResults.length}件中${relevantResults.length}件を採用`,
+        );
+      }
+
+      if (relevantResults.length === 0) {
         return { selectedEntries, fullTextMap: currentFullTextMap };
       }
 
-      selectedEntries = this.mergeWithTavilyResults(selectedEntries, additionalSearchResults).slice(
+      selectedEntries = this.mergeWithTavilyResults(selectedEntries, relevantResults).slice(
         0,
         MAX_CONTEXT_ENTRIES,
       );
@@ -152,7 +159,7 @@ export class ResearchEnricher implements IResearchEnricher {
         return { selectedEntries, fullTextMap: currentFullTextMap };
       }
 
-      const additionalUrls = additionalSearchResults
+      const additionalUrls = relevantResults
         .slice(0, Math.min(3, extractBudgetRemaining))
         .map((result) => result.url);
       console.log(`Tavily 追加 extract: ${additionalUrls.length} URLs`);
@@ -258,6 +265,40 @@ export class ResearchEnricher implements IResearchEnricher {
     }
 
     return queries.slice(0, 3);
+  }
+
+  /**
+   * Restricts topic-enrichment search results to domains the pipeline already trusts:
+   * the domains of the entries selected for the topic, plus the official-domain allowlist.
+   * When the selected entries contain no official domain, the Tavily search runs without
+   * include_domains and can return pages from anywhere on the web; merging those into the
+   * draft context has repeatedly produced off-topic [Source] blocks and multi-topic articles.
+   */
+  private filterToAllowedDomains(
+    results: SearchResult[],
+    selectedEntries: RssEntry[],
+  ): SearchResult[] {
+    const allowedDomains = new Set<string>(OFFICIAL_DOMAINS);
+    for (const entry of selectedEntries) {
+      try {
+        allowedDomains.add(new URL(entry.link).hostname.replace(/^www\./, ""));
+      } catch {}
+    }
+
+    return results.filter((result) => {
+      try {
+        const hostname = new URL(result.url).hostname.replace(/^www\./, "");
+        const allowed = [...allowedDomains].some(
+          (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+        );
+        if (!allowed) {
+          console.warn(`Tavily 検索結果を除外（許可ドメイン外）: ${result.url}`);
+        }
+        return allowed;
+      } catch {
+        return false;
+      }
+    });
   }
 
   private mergeWithTavilyResults(
