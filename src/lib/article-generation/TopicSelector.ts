@@ -132,12 +132,19 @@ export class TopicSelector implements ITopicSelector {
         ? validIndices.map((idx) => input.entries[idx - 1])
         : input.entries;
 
-    const auditedEntries =
+    const audited =
       selectedEntries.length > 1
-        ? await this.auditEntryRelevance(topicSelection.topic, selectedEntries)
-        : selectedEntries;
+        ? await this.auditEntryRelevance(
+            topicSelection.topic,
+            selectedEntries,
+            topicSelection.keyNewFacts,
+          )
+        : { entries: selectedEntries, keyNewFacts: topicSelection.keyNewFacts };
 
-    return { topicSelection, selectedEntries: auditedEntries };
+    return {
+      topicSelection: { ...topicSelection, keyNewFacts: audited.keyNewFacts },
+      selectedEntries: audited.entries,
+    };
   }
 
   /**
@@ -145,18 +152,25 @@ export class TopicSelector implements ITopicSelector {
    * The main selection prompt has grown so large that its relevance rules are routinely
    * ignored, which is the root cause of multi-topic roundup articles. A dedicated
    * keep/drop audit per entry is followed far more reliably than rules buried in a
-   * monolithic prompt. Fails open: on any LLM or parse error the original entries are kept.
+   * monolithic prompt. keyNewFacts are audited in the same call: facts extracted from a
+   * dropped entry must not survive, or the orchestrator would inject them as MANDATORY
+   * draft context with no corresponding [Source] block.
+   * Fails open: on any LLM or parse error the original entries and facts are kept.
    */
   private async auditEntryRelevance(
     topic: string,
     entries: RssEntry[],
-  ): Promise<RssEntry[]> {
+    keyNewFacts: string[],
+  ): Promise<{ entries: RssEntry[]; keyNewFacts: string[] }> {
     try {
       const entryList = entries
         .map(
           (entry, index) =>
             `[${index + 1}] ${sanitizeExternalContent(entry.title).slice(0, MAX_TITLE_LENGTH)} (${entry.link})`,
         )
+        .join("\n");
+      const factList = keyNewFacts
+        .map((fact, index) => `[${index + 1}] ${fact}`)
         .join("\n");
 
       const raw = await this.llmClient.generateText({
@@ -169,9 +183,12 @@ export class TopicSelector implements ITopicSelector {
           "- it is about a different product or service from the same company\n" +
           "- it is financial, workforce, or market news (funding, layoffs, earnings, equity deals)\n" +
           "- it is lifestyle or unrelated content that merely shares a word with the TOPIC\n" +
-          'Output ONLY JSON: {"keep": [entry numbers to keep]}. When in doubt about an entry, exclude it.',
-        user: `TOPIC: ${topic}\n\nEntries:\n${entryList}`,
-        maxTokens: 128,
+          "A numbered FACTS list extracted from these entries may also be provided. A fact survives ONLY if it is supported by one of the KEPT entries; facts that originate from an excluded entry must be dropped.\n" +
+          'Output ONLY JSON: {"keep": [entry numbers to keep], "keepFacts": [fact numbers supported by the kept entries]}. If no FACTS list is provided, output "keepFacts": []. When in doubt about an entry, exclude it.',
+        user:
+          `TOPIC: ${topic}\n\nEntries:\n${entryList}` +
+          (keyNewFacts.length > 0 ? `\n\nFacts:\n${factList}` : ""),
+        maxTokens: 256,
         temperature: 0,
       });
 
@@ -180,17 +197,35 @@ export class TopicSelector implements ITopicSelector {
         .replace(/\s*```$/i, "")
         .trim();
       const parsed = JSON.parse(cleaned);
-      if (!Array.isArray(parsed.keep)) return entries;
+      if (!Array.isArray(parsed.keep)) return { entries, keyNewFacts };
 
       const keep = new Set(
         (parsed.keep as unknown[]).filter(
           (n): n is number => typeof n === "number" && n >= 1 && n <= entries.length,
         ),
       );
+      if (keep.size === entries.length) {
+        return { entries, keyNewFacts };
+      }
+
+      // Entries were dropped — apply the fact audit so no MANDATORY fact outlives its source.
+      const keptFacts = Array.isArray(parsed.keepFacts)
+        ? keyNewFacts.filter((_, index) =>
+            (parsed.keepFacts as unknown[]).some(
+              (n) => typeof n === "number" && n === index + 1,
+            ),
+          )
+        : keyNewFacts;
+      for (const fact of keyNewFacts) {
+        if (!keptFacts.includes(fact)) {
+          console.warn(`関連性監査で除外された事実: ${fact}`);
+        }
+      }
+
       if (keep.size === 0) {
         // The first entry anchors the chosen topic; never drop everything.
         console.warn(`関連性監査が全エントリを除外。先頭エントリのみ保持: "${topic}"`);
-        return entries.slice(0, 1);
+        return { entries: entries.slice(0, 1), keyNewFacts: keptFacts };
       }
 
       for (const [index, entry] of entries.entries()) {
@@ -198,12 +233,15 @@ export class TopicSelector implements ITopicSelector {
           console.warn(`関連性監査で除外: ${entry.title} (${entry.link})`);
         }
       }
-      return entries.filter((_, index) => keep.has(index + 1));
+      return {
+        entries: entries.filter((_, index) => keep.has(index + 1)),
+        keyNewFacts: keptFacts,
+      };
     } catch (err) {
       console.warn(
         `関連性監査失敗（全エントリ保持で続行）: ${err instanceof Error ? err.message : String(err)}`,
       );
-      return entries;
+      return { entries, keyNewFacts };
     }
   }
 
