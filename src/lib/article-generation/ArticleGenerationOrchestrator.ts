@@ -34,6 +34,7 @@ export class ArticleGenerationOrchestrator {
     body: string;
     selectedTopic: string;
     selectedEntries: RssEntry[];
+    allContextEntries: RssEntry[];
   }> {
     const rejectedTopics: string[] = [];
     let bestAttempt: {
@@ -219,10 +220,13 @@ export class ArticleGenerationOrchestrator {
       ...metadata,
       body: finalBody,
       selectedTopic: finalAttempt.topicSelection.topic,
-      // topicEntries: original TopicSelector output (1-5 entries) used for source extraction.
-      // selectedEntries (enriched, up to 20) was used for LLM context but must NOT flow into
-      // frontmatter sources to avoid unrelated RSS/Tavily entries contaminating the source list.
+      // topicEntries: original TopicSelector output (1-5 entries) — the safe fallback set.
+      // allContextEntries: enriched set (up to 20) actually fed to the LLM. generate-article.ts
+      // resolves frontmatter sources from allContextEntries filtered to URLs the body actually
+      // cites, so Tavily-enriched pages the LLM cited appear in frontmatter while uncited
+      // entries stay out.
       selectedEntries: finalAttempt.topicEntries,
+      allContextEntries: finalAttempt.selectedEntries,
     };
   }
 }

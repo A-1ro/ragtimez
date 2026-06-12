@@ -243,6 +243,7 @@ export const POST: APIRoute = async ({ request }) => {
     body: string;
     selectedTopic: string;
     selectedEntries: RssEntry[];
+    allContextEntries?: RssEntry[];
   };
   try {
     if (translationSource) {
@@ -283,13 +284,20 @@ export const POST: APIRoute = async ({ request }) => {
 
   // --- Extract sources & trust level ----------------------------------------
   // In translation mode: inherit sources and trustLevel from the Japanese article.
-  // In full generation mode: derive from the LLM-selected RSS entries.
+  // In full generation mode: derive from every entry the LLM saw (allContextEntries,
+  // including Tavily-enriched pages) filtered down to URLs the body actually cites.
+  // If the body cites none of them, fall back to the narrow topic-entry list so the
+  // broad context set never floods frontmatter.
   const rawSources = translationSource
     ? translationSource.sources
-    : extractSources(llmResult.selectedEntries);
+    : extractSources(llmResult.allContextEntries ?? llmResult.selectedEntries);
   const sources: ArticleSource[] = translationSource
     ? rawSources
-    : filterSourcesByCited(llmResult.body, rawSources);
+    : filterSourcesByCited(
+        llmResult.body,
+        rawSources,
+        extractSources(llmResult.selectedEntries),
+      );
   const trustLevel: "official" | "blog" | "speculative" = translationSource
     ? translationSource.trustLevel
     : deriveTrustLevel(sources);

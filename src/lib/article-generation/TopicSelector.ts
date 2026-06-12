@@ -132,7 +132,79 @@ export class TopicSelector implements ITopicSelector {
         ? validIndices.map((idx) => input.entries[idx - 1])
         : input.entries;
 
-    return { topicSelection, selectedEntries };
+    const auditedEntries =
+      selectedEntries.length > 1
+        ? await this.auditEntryRelevance(topicSelection.topic, selectedEntries)
+        : selectedEntries;
+
+    return { topicSelection, selectedEntries: auditedEntries };
+  }
+
+  /**
+   * Second-pass relevance audit with a small, focused prompt.
+   * The main selection prompt has grown so large that its relevance rules are routinely
+   * ignored, which is the root cause of multi-topic roundup articles. A dedicated
+   * keep/drop audit per entry is followed far more reliably than rules buried in a
+   * monolithic prompt. Fails open: on any LLM or parse error the original entries are kept.
+   */
+  private async auditEntryRelevance(
+    topic: string,
+    entries: RssEntry[],
+  ): Promise<RssEntry[]> {
+    try {
+      const entryList = entries
+        .map(
+          (entry, index) =>
+            `[${index + 1}] ${sanitizeExternalContent(entry.title).slice(0, MAX_TITLE_LENGTH)} (${entry.link})`,
+        )
+        .join("\n");
+
+      const raw = await this.llmClient.generateText({
+        model: TOPIC_SELECTION_MODEL,
+        system:
+          "You are a strict relevance auditor for a single-topic technical deep-dive blog.\n" +
+          "Given a TOPIC and a numbered list of news entries, decide for each entry whether it covers the EXACT SAME product, service, or announcement as the TOPIC.\n" +
+          "Exclude an entry if ANY of these apply:\n" +
+          "- it is about a different company than the one in the TOPIC\n" +
+          "- it is about a different product or service from the same company\n" +
+          "- it is financial, workforce, or market news (funding, layoffs, earnings, equity deals)\n" +
+          "- it is lifestyle or unrelated content that merely shares a word with the TOPIC\n" +
+          'Output ONLY JSON: {"keep": [entry numbers to keep]}. When in doubt about an entry, exclude it.',
+        user: `TOPIC: ${topic}\n\nEntries:\n${entryList}`,
+        maxTokens: 128,
+        temperature: 0,
+      });
+
+      const cleaned = raw
+        .replace(/^```(?:json)?\s*/i, "")
+        .replace(/\s*```$/i, "")
+        .trim();
+      const parsed = JSON.parse(cleaned);
+      if (!Array.isArray(parsed.keep)) return entries;
+
+      const keep = new Set(
+        (parsed.keep as unknown[]).filter(
+          (n): n is number => typeof n === "number" && n >= 1 && n <= entries.length,
+        ),
+      );
+      if (keep.size === 0) {
+        // The first entry anchors the chosen topic; never drop everything.
+        console.warn(`関連性監査が全エントリを除外。先頭エントリのみ保持: "${topic}"`);
+        return entries.slice(0, 1);
+      }
+
+      for (const [index, entry] of entries.entries()) {
+        if (!keep.has(index + 1)) {
+          console.warn(`関連性監査で除外: ${entry.title} (${entry.link})`);
+        }
+      }
+      return entries.filter((_, index) => keep.has(index + 1));
+    } catch (err) {
+      console.warn(
+        `関連性監査失敗（全エントリ保持で続行）: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      return entries;
+    }
   }
 
   private buildContext(entries: RssEntry[]): string {
