@@ -14,6 +14,19 @@ export const OFFICIAL_DOMAINS = [
   "research.google",
 ];
 
+// Community forum / Q&A subdomains that host user-generated content.
+// These must never be classified as "official" even when the parent domain is in OFFICIAL_DOMAINS.
+const COMMUNITY_SUBDOMAINS = new Set([
+  "discuss",
+  "community",
+  "forum",
+  "forums",
+  "answers",
+  "qa",
+  "support",
+  "stackoverflow",
+]);
+
 export const BLOG_DOMAINS = [
   "medium.com",
   "dev.to",
@@ -33,6 +46,17 @@ export function classifySourceType(url: string): "official" | "blog" | "other" {
 
     for (const domain of OFFICIAL_DOMAINS) {
       if (hostname === domain || hostname.endsWith(`.${domain}`)) {
+        // If the URL is on a subdomain (not the bare domain itself), check whether
+        // that subdomain is a community forum / Q&A site.  Such pages are
+        // user-generated content and must NOT receive "official" classification,
+        // even when the parent domain (e.g. huggingface.co) is in OFFICIAL_DOMAINS.
+        if (hostname !== domain) {
+          const subdomain = hostname.split(".")[0];
+          if (COMMUNITY_SUBDOMAINS.has(subdomain)) {
+            return "other";
+          }
+        }
+
         // huggingface.co community blogs at /blog/{org}/{article} are not official —
         // they are authored by third parties (hackathon teams, individuals, etc.).
         // Only treat as official if it's a model card, dataset, space, or HF's own blog.
