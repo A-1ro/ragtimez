@@ -33,7 +33,7 @@ export function stripFabricatedCitations(
 
   const isAllowed = (url: string) => normalizedAllowed.has(normalizeForComparison(url));
 
-  // Japanese citation format
+  // Japanese citation format — Markdown link: （出典: [title](url)）
   stripped = stripped.replace(
     /（出典:\s*\[[^\]]*\]\(([^)\s]+)\)）/g,
     (match, url: string) => {
@@ -46,13 +46,41 @@ export function stripFabricatedCitations(
     },
   );
 
-  // English citation format
+  // Japanese citation format — bare URL: （出典: https://...）
+  // The LLM sometimes ignores Markdown-link instructions and emits bare URLs.
+  // These bypass the Markdown-link regex above, so we strip them separately.
+  stripped = stripped.replace(
+    /（出典:\s*(https?:\/\/[^\s）]+)）/g,
+    (match, url: string) => {
+      if (!isAllowed(url)) {
+        count++;
+        console.warn(`捏造出典URL削除（ベアURL）: ${url.trim()}`);
+        return "（出典: 公式ドキュメントに記載なし）";
+      }
+      return match;
+    },
+  );
+
+  // English citation format — Markdown link: (Source: [title](url))
   stripped = stripped.replace(
     /\(Source:\s*\[[^\]]*\]\(([^)\s]+)\)\)/g,
     (match, url: string) => {
       if (!isAllowed(url)) {
         count++;
         console.warn(`Fabricated source URL removed: ${url.trim()}`);
+        return "(Source: not detailed in official documentation)";
+      }
+      return match;
+    },
+  );
+
+  // English citation format — bare URL: (Source: https://...)
+  stripped = stripped.replace(
+    /\(Source:\s*(https?:\/\/[^\s)]+)\)/g,
+    (match, url: string) => {
+      if (!isAllowed(url)) {
+        count++;
+        console.warn(`Fabricated source URL removed (bare URL): ${url.trim()}`);
         return "(Source: not detailed in official documentation)";
       }
       return match;
