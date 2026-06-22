@@ -15,14 +15,14 @@ export class MetadataGenerator implements IMetadataGenerator {
         ? "You are a senior engineer writing a technical blog. " +
           "Read the provided article body and generate metadata that accurately reflects the article's actual content. Output ONLY valid JSON.\n" +
           "The JSON must have exactly these three keys:\n" +
-          '- "title": a specific, descriptive English headline (15-50 chars) that summarizes what this article is actually about. Avoid vague words like "Latest updates" or "Summary".\n' +
+          '- "title": a specific, descriptive English headline (15-50 chars) that names the EXACT product, service, or technology this article covers. FORBIDDEN words (using any of these causes rejection): "Latest", "Updates", "Summary", "Overview", "Trends", "News", "Roundup", "Evolution", "Developments". Example of BAD title: "AI Agent Latest Trends and Evolution". Example of GOOD title: "Amazon Bedrock AgentCore Payments: Autonomous Agent Transactions via x402".\n' +
           '- "summary": 2-3 English sentences explaining WHAT the article covers, WHY it matters technically, and WHAT engineers should do about it.\n' +
           '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies) that appear in the article.\n' +
           "Output only the JSON object, no markdown fences."
         : "You are a Japanese senior engineer writing a technical blog. " +
           "Read the provided article body and generate metadata that accurately reflects the article's actual content. Output ONLY valid JSON.\n" +
           "The JSON must have exactly these three keys:\n" +
-          '- "title": a specific, descriptive Japanese headline (20-50 chars) that summarizes what this article is actually about. Avoid vague words like "最新動向" or "まとめ".\n' +
+          '- "title": a specific, descriptive Japanese headline (20-50 chars) that names the EXACT product, service, or technology this article covers. FORBIDDEN words (using any of these causes rejection): "最新動向", "動向", "まとめ", "トレンド", "概要", "ニュース", "アップデート情報", "進化", "現状". Example of BAD title: "AIエージェントの最新動向と技術的進化". Example of GOOD title: "Amazon Bedrock AgentCore Paymentsでエージェント支払いを実装する".\n' +
           '- "summary": 2-3 Japanese sentences explaining WHAT the article covers, WHY it matters technically, and WHAT engineers should do about it.\n' +
           '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies) that appear in the article.\n' +
           "Output only the JSON object, no markdown fences.";
@@ -76,6 +76,14 @@ export class MetadataGenerator implements IMetadataGenerator {
 
     if (!meta.title || !meta.summary) {
       throw new Error(`Metadata missing fields. Raw: ${normalized.slice(0, 300)}`);
+    }
+
+    const FORBIDDEN_JA = ["最新動向", "動向", "トレンド", "概要", "ニュース", "アップデート情報", "進化", "現状"];
+    const FORBIDDEN_EN = /\b(latest|updates?|summary|overview|trends?|news|roundup|evolution|developments?)\b/i;
+    const hasForbiddenJa = input.lang === "ja" && FORBIDDEN_JA.some((w) => meta.title.includes(w));
+    const hasForbiddenEn = input.lang === "en" && FORBIDDEN_EN.test(meta.title);
+    if (hasForbiddenJa || hasForbiddenEn) {
+      console.warn(`MetadataGenerator: タイトルに禁止ワードが含まれています: "${meta.title}"`);
     }
 
     return meta;
