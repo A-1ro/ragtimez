@@ -14,14 +14,16 @@ function normalizeForComparison(url: string): string {
  * Strips fabricated citation URLs from the article body.
  *
  * The LLM draft generator sometimes cites URLs from pre-training knowledge that
- * do not appear in any provided [Source] block.  This function finds all
- * Markdown citation links in the two expected formats and replaces those whose
- * URL is not in the `allowedUrls` set with a "not documented" placeholder,
- * preventing hallucinated source links from reaching the published article.
+ * do not appear in any provided [Source] block. This function finds all Markdown
+ * citation blocks in the two expected formats, handles multi-URL citation blocks
+ * (e.g. 「（出典: [A](url1)、[B](url2)）」), and replaces any URL not in
+ * `allowedUrls` with a placeholder. If a citation block contains a mix of
+ * allowed and fabricated URLs, the allowed links are preserved and the fabricated
+ * ones are removed individually.
  *
- * Handled formats:
- *   Japanese — （出典: [title](url)）
- *   English  — (Source: [title](url))
+ * Handled formats (single and multiple URLs per block):
+ *   Japanese — （出典: [title](url)） or （出典: [A](url1)、[B](url2)）
+ *   English  — (Source: [title](url)) or (Source: [A](url1), [B](url2))
  */
 export function stripFabricatedCitations(
   body: string,
@@ -33,29 +35,58 @@ export function stripFabricatedCitations(
 
   const isAllowed = (url: string) => normalizedAllowed.has(normalizeForComparison(url));
 
-  // Japanese citation format
-  stripped = stripped.replace(
-    /（出典:\s*\[[^\]]*\]\(([^)\s]+)\)）/g,
-    (match, url: string) => {
-      if (!isAllowed(url)) {
+  /**
+   * Given the inner content of a citation block, extract each [title](url) pair,
+   * keep only those whose URL is allowed, and report fabricated ones.
+   */
+  function filterCitationLinks(
+    inner: string,
+    onFabricated: (url: string) => void,
+  ): { allowedLinks: string[]; hadFabricated: boolean } {
+    const allowedLinks: string[] = [];
+    let hadFabricated = false;
+    const linkRe = /\[([^\]]*)\]\(([^)\s]+)\)/g;
+    let m: RegExpExecArray | null;
+    while ((m = linkRe.exec(inner)) !== null) {
+      const url = m[2];
+      if (isAllowed(url)) {
+        allowedLinks.push(m[0]);
+      } else {
+        hadFabricated = true;
         count++;
-        console.warn(`捏造出典URL削除: ${url.trim()}`);
-        return "（出典: 公式ドキュメントに記載なし）";
+        onFabricated(url);
       }
-      return match;
+    }
+    return { allowedLinks, hadFabricated };
+  }
+
+  // Japanese citation format: （出典: ... ）
+  // Full-width 「）」 is an unambiguous close delimiter that does not appear in URLs or link titles,
+  // so [^）]* safely matches the entire inner content including multiple links.
+  stripped = stripped.replace(
+    /（出典:\s*([^）]*)）/g,
+    (match, inner: string) => {
+      const { allowedLinks, hadFabricated } = filterCitationLinks(inner, (url) => {
+        console.warn(`捏造出典URL削除: ${url.trim()}`);
+      });
+      if (!hadFabricated) return match;
+      return allowedLinks.length > 0
+        ? `（出典: ${allowedLinks.join('、')}）`
+        : '（出典: 公式ドキュメントに記載なし）';
     },
   );
 
-  // English citation format
+  // English citation format: (Source: [title](url), ...) — match one or more Markdown links
   stripped = stripped.replace(
-    /\(Source:\s*\[[^\]]*\]\(([^)\s]+)\)\)/g,
-    (match, url: string) => {
-      if (!isAllowed(url)) {
-        count++;
+    /\(Source:\s*((?:\[[^\]]*\]\([^)\s]+\)(?:[,、]\s*)?)+)\)/g,
+    (match, inner: string) => {
+      const { allowedLinks, hadFabricated } = filterCitationLinks(inner, (url) => {
         console.warn(`Fabricated source URL removed: ${url.trim()}`);
-        return "(Source: not detailed in official documentation)";
-      }
-      return match;
+      });
+      if (!hadFabricated) return match;
+      return allowedLinks.length > 0
+        ? `(Source: ${allowedLinks.join(', ')})`
+        : '(Source: not detailed in official documentation)';
     },
   );
 
@@ -64,6 +95,34 @@ export function stripFabricatedCitations(
   }
 
   return stripped;
+}
+
+/**
+ * Removes citation blocks from ## まとめ / ## Summary sections.
+ *
+ * The article generation rules forbid citation lines in the final section, but
+ * the LLM occasionally adds them anyway. This function enforces that rule at
+ * post-processing time by stripping 「（出典: ...）」 and「(Source: ...)」blocks
+ * from within the last (まとめ/Summary) section of the article.
+ */
+export function removeSummaryCitations(body: string): string {
+  const result = body.replace(
+    /(##\s*(?:まとめ|Summary)[^\n]*\n)([\s\S]*?)(?=\n##|\s*$)/i,
+    (_match, heading: string, content: string) => {
+      const cleaned = content
+        // Japanese citation blocks (full-width parens are unambiguous delimiters)
+        .replace(/（出典:[^）]*）/g, '')
+        // English citation blocks
+        .replace(/\(Source:\s*(?:\[[^\]]*\]\([^)\s]+\)(?:[,、]\s*)?)*\)/g, '')
+        // Collapse triple+ blank lines left by removal
+        .replace(/\n{3,}/g, '\n\n');
+      if (cleaned !== content) {
+        console.warn('## まとめ/Summary セクションから出典ブロックを除去しました');
+      }
+      return heading + cleaned;
+    },
+  );
+  return result;
 }
 
 export async function postProcess(
@@ -117,6 +176,9 @@ export async function postProcess(
       return match;
     });
   }).join("");
+
+  // Remove citation blocks from ## まとめ/Summary (rules forbid citations there).
+  result = removeSummaryCitations(result);
 
   // Strip fabricated citations after [N] → URL substitution so that any
   // numeric references resolved to real entry links are included in allowedUrls.
