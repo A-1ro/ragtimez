@@ -66,6 +66,30 @@ export function stripFabricatedCitations(
   return stripped;
 }
 
+/**
+ * Strips citation-format links from ## まとめ and ## Summary sections.
+ * These sections must not contain source citations per the draft prompt rules.
+ * Applied even for allowed URLs, because the placement (not the URL) violates the rule.
+ */
+export function stripSummarySectionCitations(body: string): string {
+  // Match the まとめ or Summary heading through to the next ## heading or end of string.
+  // Use a replacer that removes only citation-format links within that block.
+  return body.replace(
+    /(##\s*(?:まとめ|Summary)\s*\n)([\s\S]*?)(?=\n##\s|\s*$)/g,
+    (_, heading: string, content: string) => {
+      let cleaned = content;
+      // Remove Japanese citation format: （出典: [title](url)）
+      cleaned = cleaned.replace(/（出典:\s*\[[^\]]*\]\([^)\s]+\)）/g, "");
+      // Remove English citation format: (Source: [title](url))
+      cleaned = cleaned.replace(/\(Source:\s*\[[^\]]*\]\([^)\s]+\)\)/g, "");
+      if (cleaned !== content) {
+        console.warn("まとめ/Summary セクション内の出典リンクを除去しました");
+      }
+      return heading + cleaned;
+    },
+  );
+}
+
 export async function postProcess(
   body: string,
   entries: RssEntry[],
@@ -121,6 +145,11 @@ export async function postProcess(
   // Strip fabricated citations after [N] → URL substitution so that any
   // numeric references resolved to real entry links are included in allowedUrls.
   result = stripFabricatedCitations(result, allowedUrls);
+
+  // Strip any lingering citation-format links from まとめ/Summary sections.
+  // The prompt forbids citations there; this is a safety net for cases where
+  // the LLM includes them anyway (even using a legitimately provided URL).
+  result = stripSummarySectionCitations(result);
 
   return result;
 }
