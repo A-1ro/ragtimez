@@ -1,70 +1,5 @@
+import { CitationLinkProcessor } from "./CitationLinkProcessor";
 import type { RssEntry } from "./types";
-
-/** Normalise a URL for comparison: lowercase hostname, strip trailing slash and fragment. */
-function normalizeForComparison(url: string): string {
-  try {
-    const u = new URL(url.trim());
-    return `${u.protocol}//${u.hostname.toLowerCase()}${u.pathname.replace(/\/$/, "")}${u.search}`;
-  } catch {
-    return url.trim().toLowerCase();
-  }
-}
-
-/**
- * Strips fabricated citation URLs from the article body.
- *
- * The LLM draft generator sometimes cites URLs from pre-training knowledge that
- * do not appear in any provided [Source] block.  This function finds all
- * Markdown citation links in the two expected formats and replaces those whose
- * URL is not in the `allowedUrls` set with a "not documented" placeholder,
- * preventing hallucinated source links from reaching the published article.
- *
- * Handled formats:
- *   Japanese — （出典: [title](url)）
- *   English  — (Source: [title](url))
- */
-export function stripFabricatedCitations(
-  body: string,
-  allowedUrls: Set<string>,
-): string {
-  const normalizedAllowed = new Set([...allowedUrls].map(normalizeForComparison));
-  let stripped = body;
-  let count = 0;
-
-  const isAllowed = (url: string) => normalizedAllowed.has(normalizeForComparison(url));
-
-  // Japanese citation format
-  stripped = stripped.replace(
-    /（出典:\s*\[[^\]]*\]\(([^)\s]+)\)）/g,
-    (match, url: string) => {
-      if (!isAllowed(url)) {
-        count++;
-        console.warn(`捏造出典URL削除: ${url.trim()}`);
-        return "（出典: 公式ドキュメントに記載なし）";
-      }
-      return match;
-    },
-  );
-
-  // English citation format
-  stripped = stripped.replace(
-    /\(Source:\s*\[[^\]]*\]\(([^)\s]+)\)\)/g,
-    (match, url: string) => {
-      if (!isAllowed(url)) {
-        count++;
-        console.warn(`Fabricated source URL removed: ${url.trim()}`);
-        return "(Source: not detailed in official documentation)";
-      }
-      return match;
-    },
-  );
-
-  if (count > 0) {
-    console.warn(`合計 ${count} 件の捏造出典URLを除去しました`);
-  }
-
-  return stripped;
-}
 
 export async function postProcess(
   body: string,
@@ -118,9 +53,9 @@ export async function postProcess(
     });
   }).join("");
 
-  // Strip fabricated citations after [N] → URL substitution so that any
-  // numeric references resolved to real entry links are included in allowedUrls.
-  result = stripFabricatedCitations(result, allowedUrls);
+  // Normalize and strip fabricated citations after [N] → URL substitution so that
+  // any numeric references resolved to real entry links are included in allowedUrls.
+  result = new CitationLinkProcessor().process(result, allowedUrls);
 
   return result;
 }
