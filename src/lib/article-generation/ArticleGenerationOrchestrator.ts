@@ -1,7 +1,9 @@
+import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
   IDraftGenerator,
+  IFactualIntegrityValidator,
   IMetadataGenerator,
   IResearchEnricher,
   SearchUsageBudget,
@@ -12,12 +14,17 @@ import { checkTopicDuplication, normalizeUrl } from "./topicDeduplication";
 import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
+  private readonly factualIntegrityValidator: IFactualIntegrityValidator;
+
   constructor(
     private readonly topicSelector: ITopicSelector,
     private readonly researchEnricher: IResearchEnricher,
     private readonly metadataGenerator: IMetadataGenerator,
     private readonly draftGenerator: IDraftGenerator,
-  ) {}
+    factualIntegrityValidator?: IFactualIntegrityValidator,
+  ) {
+    this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
+  }
 
   async generate(input: {
     entries: RssEntry[];
@@ -209,6 +216,10 @@ export class ArticleGenerationOrchestrator {
         `Step 2b post-processing failed, using draft: ${err instanceof Error ? err.message : String(err)}`,
       );
     }
+
+    // Step 2b-2: repair structural Markdown artifacts (e.g. nested link hrefs)
+    // that survive post-processing. Additive pass, independent of postProcess.
+    finalBody = this.factualIntegrityValidator.validate(finalBody);
 
     // Step 2c: generate metadata from the final body to ensure title matches content
     const metadata = await this.metadataGenerator.generate({
