@@ -66,6 +66,70 @@ export function stripFabricatedCitations(
   return stripped;
 }
 
+/**
+ * Strips fabricated URLs from ordinary inline Markdown links in the article body.
+ *
+ * stripFabricatedCitations only checks the two fixed "（出典: ...)" / "(Source: ...)"
+ * templates. It never inspects other inline links such as "[Guardrails設定ガイド](url)"
+ * inside a paragraph, or any link inside the ## まとめ / ## Summary section (which the
+ * draft-generation prompt explicitly exempts from citation rules). Those links can carry
+ * a plausible-looking but hallucinated documentation URL straight into the published
+ * article. This pass checks every remaining Markdown link against `allowedUrls` and, for
+ * any URL that isn't one of them, drops the hyperlink but keeps the visible label text so
+ * the surrounding sentence still reads naturally.
+ */
+export function stripFabricatedLinks(body: string, allowedUrls: Set<string>): string {
+  const normalizedAllowed = new Set([...allowedUrls].map(normalizeForComparison));
+  const isAllowed = (url: string) => normalizedAllowed.has(normalizeForComparison(url));
+  let count = 0;
+
+  const segments = body.split(/(```[\s\S]*?```)/g);
+  const result = segments
+    .map((segment, i) => {
+      if (i % 2 === 1) return segment;
+      return segment.replace(
+        /\[([^\]]*)\]\(\s*<?([^>\s)]+)>?(?:\s[^)]*)?\)/g,
+        (match, label: string, url: string) => {
+          if (isAllowed(url)) return match;
+          count++;
+          console.warn(`未許可URLへのインラインリンクを除去: ${url.trim()}`);
+          return label;
+        },
+      );
+    })
+    .join("");
+
+  if (count > 0) {
+    console.warn(`合計 ${count} 件の未許可インラインリンクを除去しました（引用形式以外）`);
+  }
+
+  return result;
+}
+
+const SUMMARY_HEADINGS = new Set(["## まとめ", "## Summary"]);
+
+/**
+ * Logs (does not modify) non-summary "## " sections that end up with zero citation
+ * to any allowed URL, once numeric [N] references and fabricated links have already
+ * been resolved/stripped. The draft-generation prompt requires every non-summary
+ * section to end with a source citation, but nothing previously verified that
+ * requirement — a section could omit the citation entirely and publish unnoticed.
+ */
+function warnMissingSectionCitations(body: string, allowedUrls: Set<string>): void {
+  const normalizedAllowed = new Set([...allowedUrls].map(normalizeForComparison));
+  const sections = body.split(/\n(?=## )/);
+  for (const section of sections) {
+    const headingLine = section.split("\n", 1)[0]?.trim() ?? "";
+    if (!headingLine.startsWith("## ") || SUMMARY_HEADINGS.has(headingLine)) continue;
+
+    const urls = [...section.matchAll(/\]\(\s*<?([^>\s)]+)>?(?:\s[^)]*)?\)/g)].map((m) => m[1]);
+    const hasAllowedUrl = urls.some((url) => normalizedAllowed.has(normalizeForComparison(url)));
+    if (!hasAllowedUrl) {
+      console.warn(`出典引用のないセクションを検出（要レビュー）: "${headingLine}"`);
+    }
+  }
+}
+
 export async function postProcess(
   body: string,
   entries: RssEntry[],
@@ -121,6 +185,8 @@ export async function postProcess(
   // Strip fabricated citations after [N] → URL substitution so that any
   // numeric references resolved to real entry links are included in allowedUrls.
   result = stripFabricatedCitations(result, allowedUrls);
+  result = stripFabricatedLinks(result, allowedUrls);
+  warnMissingSectionCitations(result, allowedUrls);
 
   return result;
 }
