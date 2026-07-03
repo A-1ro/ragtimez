@@ -54,6 +54,17 @@ export interface IDraftGenerator {
   }): Promise<string>;
 }
 
+export interface CitationIntegrityReport {
+  totalSections: number;
+  unsourcedSections: number;
+  unsourcedRatio: number;
+  unsourcedSectionTitles: string[];
+}
+
+export interface ICitationIntegrityChecker {
+  analyze(body: string, lang: "ja" | "en"): CitationIntegrityReport;
+}
+
 export interface ITranslationService {
   parseArticleMarkdown(raw: string): TranslationSource | null;
   resolveTranslationSource(input: {

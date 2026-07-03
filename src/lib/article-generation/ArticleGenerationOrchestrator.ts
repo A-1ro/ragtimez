@@ -1,6 +1,8 @@
+import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
+  ICitationIntegrityChecker,
   IDraftGenerator,
   IMetadataGenerator,
   IResearchEnricher,
@@ -17,6 +19,7 @@ export class ArticleGenerationOrchestrator {
     private readonly researchEnricher: IResearchEnricher,
     private readonly metadataGenerator: IMetadataGenerator,
     private readonly draftGenerator: IDraftGenerator,
+    private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
   ) {}
 
   async generate(input: {
@@ -207,6 +210,17 @@ export class ArticleGenerationOrchestrator {
     } catch (err) {
       console.warn(
         `Step 2b post-processing failed, using draft: ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
+
+    // Observability only: flag sections whose citation was stripped as fabricated (or was
+    // never present), since that usually means the section's PROSE — not just its citation —
+    // was not actually grounded in a provided [Source] block. Does not alter finalBody.
+    const citationReport = this.citationIntegrityChecker.analyze(finalBody, input.lang);
+    if (citationReport.unsourcedSections > 0) {
+      console.warn(
+        `引用整合性チェック: ${citationReport.unsourcedSections}/${citationReport.totalSections} セクションに有効な出典なし ` +
+          `（トピック: "${finalAttempt.topicSelection.topic}"）。対象セクション: ${citationReport.unsourcedSectionTitles.join(" / ")}`,
       );
     }
 
