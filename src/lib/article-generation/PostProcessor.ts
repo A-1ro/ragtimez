@@ -240,5 +240,10 @@ export async function postProcess(
   // numeric references resolved to real entry links are included in allowedUrls.
   result = stripFabricatedCitations(result, allowedUrls);
 
+  // Strip any lingering citation-format links from まとめ/Summary sections.
+  // The prompt forbids citations there; this is a safety net for cases where
+  // the LLM includes them anyway (even using a legitimately provided URL).
+  result = removeSummaryCitations(result);
+
   return result;
 }
