@@ -94,8 +94,14 @@ export async function postProcess(
   for (const row of banned.results) {
     try {
       const regex = new RegExp(row.pattern, "g");
-      if (regex.test(result)) {
-        console.warn(`禁止フレーズ検出 [${row.severity}]: "${row.pattern}"${row.suggestion ? ` → ${row.suggestion}` : ""}`);
+      const before = result;
+      if (row.suggestion !== null) {
+        result = result.replace(regex, row.suggestion);
+        if (result !== before) {
+          console.warn(`禁止フレーズを置換 [${row.severity}]: "${row.pattern}" → "${row.suggestion}"`);
+        }
+      } else if (regex.test(result)) {
+        console.warn(`禁止フレーズ検出 [${row.severity}]: "${row.pattern}"（置換候補なし）`);
       }
     } catch (err) {
       console.warn(`禁止フレーズの正規表現が不正です: "${row.pattern}" — ${err instanceof Error ? err.message : String(err)}`);
