@@ -141,9 +141,18 @@ export class TopicSelector implements ITopicSelector {
           )
         : { entries: selectedEntries, keyNewFacts: topicSelection.keyNewFacts };
 
+    // Third-pass: programmatic vendor-domain filter.
+    // When the LLM audit fails to exclude entries from a different company's domain
+    // (e.g., keeping an openai.com entry for an Amazon Bedrock topic), this step
+    // removes them deterministically without relying on LLM instruction-following.
+    const vendorFiltered = this.filterEntriesByTopicVendor(
+      topicSelection.topic,
+      audited.entries,
+    );
+
     return {
       topicSelection: { ...topicSelection, keyNewFacts: audited.keyNewFacts },
-      selectedEntries: audited.entries,
+      selectedEntries: vendorFiltered,
     };
   }
 
@@ -247,6 +256,93 @@ export class TopicSelector implements ITopicSelector {
       );
       return { entries, keyNewFacts };
     }
+  }
+
+  /**
+   * Programmatic third-pass vendor-domain filter.
+   *
+   * The LLM-based audit (auditEntryRelevance) sometimes fails to exclude entries from
+   * a different company when the topic clearly names a specific vendor (e.g., keeping
+   * an openai.com entry when the topic is "Amazon Bedrock Ops Alert"). This method
+   * resolves vendor identity from the topic string and removes entries from domains
+   * that do not belong to that vendor.
+   *
+   * Only activates when a recognized vendor keyword appears in the topic. When no
+   * vendor is identified the original list is returned unchanged so generic topics
+   * (e.g., "LLM inference optimization") are not inadvertently narrowed.
+   *
+   * Fails open: if filtering would drop every entry the original list is preserved.
+   */
+  private filterEntriesByTopicVendor(topic: string, entries: RssEntry[]): RssEntry[] {
+    const VENDOR_DOMAINS: Array<{ keywords: string[]; domains: string[] }> = [
+      {
+        keywords: ["amazon", " aws", "bedrock", "sagemaker", "rekognition", "kendra", "polly", "comprehend", "lex "],
+        domains: ["amazon.com", "amazonaws.com", "aws.amazon.com"],
+      },
+      {
+        keywords: ["azure", "microsoft", " copilot"],
+        domains: ["microsoft.com", "azure.com", "azure.microsoft.com"],
+      },
+      {
+        keywords: ["google ", "gemini", "vertex ai", " gcp", "deepmind"],
+        domains: ["google.com", "cloud.google.com", "deepmind.com", "googleapis.com"],
+      },
+      {
+        keywords: ["openai", "gpt-", "chatgpt", "dall-e", "sora", "whisper"],
+        domains: ["openai.com"],
+      },
+      {
+        keywords: ["anthropic", " claude"],
+        domains: ["anthropic.com"],
+      },
+      {
+        keywords: ["meta llama", "meta ai", " llama-"],
+        domains: ["meta.com", "ai.meta.com", "llama.meta.com"],
+      },
+    ];
+
+    const topicLower = ` ${topic.toLowerCase()} `;
+    let allowedDomains: string[] | null = null;
+
+    for (const vendor of VENDOR_DOMAINS) {
+      if (vendor.keywords.some((kw) => topicLower.includes(kw))) {
+        allowedDomains = vendor.domains;
+        break;
+      }
+    }
+
+    if (!allowedDomains) return entries;
+
+    const isAllowed = (link: string): boolean => {
+      try {
+        const hostname = new URL(link).hostname.replace(/^www\./, "").toLowerCase();
+        return allowedDomains!.some(
+          (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+        );
+      } catch {
+        return true;
+      }
+    };
+
+    const filtered = entries.filter((entry) => isAllowed(entry.link));
+
+    if (filtered.length === 0) {
+      console.warn(
+        `ベンダードメインフィルタ: 全エントリが除外されたため元のリストを保持: "${topic}"`,
+      );
+      return entries;
+    }
+
+    const removed = entries.length - filtered.length;
+    if (removed > 0) {
+      for (const entry of entries) {
+        if (!isAllowed(entry.link)) {
+          console.warn(`ベンダードメインフィルタで除外: ${entry.title} (${entry.link})`);
+        }
+      }
+    }
+
+    return filtered;
   }
 
   private buildContext(entries: RssEntry[]): string {
