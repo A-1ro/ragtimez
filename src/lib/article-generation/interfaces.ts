@@ -73,3 +73,13 @@ export interface ITranslationService {
   }): Promise<TranslationSource | null>;
   translateArticle(source: TranslationSource, date: string): Promise<TranslationResult>;
 }
+
+/**
+ * Repairs structural Markdown artifacts the draft LLM occasionally emits
+ * (e.g. a link whose href is itself an unresolved `[label](url)` pair).
+ * Runs as an additive pass after PostProcessor.postProcess and does not
+ * alter any existing post-processing behavior.
+ */
+export interface IFactualIntegrityValidator {
+  validate(body: string): string;
+}
