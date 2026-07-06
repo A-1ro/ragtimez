@@ -54,14 +54,15 @@ export interface IDraftGenerator {
   }): Promise<string>;
 }
 
-export interface ICitationLinkProcessor {
-  /**
-   * Normalises malformed citation-link syntax and strips any citation URL
-   * not present in `allowedUrls`, replacing it with a "not documented"
-   * placeholder so hallucinated source links never reach the published
-   * article.
-   */
-  process(body: string, allowedUrls: Set<string>): string;
+export interface CitationIntegrityReport {
+  totalSections: number;
+  unsourcedSections: number;
+  unsourcedRatio: number;
+  unsourcedSectionTitles: string[];
+}
+
+export interface ICitationIntegrityChecker {
+  analyze(body: string, lang: "ja" | "en"): CitationIntegrityReport;
 }
 
 export interface ITranslationService {

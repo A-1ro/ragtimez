@@ -1,7 +1,9 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
+import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
+  ICitationIntegrityChecker,
   IDraftGenerator,
   IFactualIntegrityValidator,
   IMetadataGenerator,
@@ -22,6 +24,7 @@ export class ArticleGenerationOrchestrator {
     private readonly metadataGenerator: IMetadataGenerator,
     private readonly draftGenerator: IDraftGenerator,
     factualIntegrityValidator?: IFactualIntegrityValidator,
+    private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
   }
@@ -220,6 +223,17 @@ export class ArticleGenerationOrchestrator {
     // Step 2b-2: repair structural Markdown artifacts (e.g. nested link hrefs)
     // that survive post-processing. Additive pass, independent of postProcess.
     finalBody = this.factualIntegrityValidator.validate(finalBody);
+
+    // Observability only: flag sections whose citation was stripped as fabricated (or was
+    // never present), since that usually means the section's PROSE — not just its citation —
+    // was not actually grounded in a provided [Source] block. Does not alter finalBody.
+    const citationReport = this.citationIntegrityChecker.analyze(finalBody, input.lang);
+    if (citationReport.unsourcedSections > 0) {
+      console.warn(
+        `引用整合性チェック: ${citationReport.unsourcedSections}/${citationReport.totalSections} セクションに有効な出典なし ` +
+          `（トピック: "${finalAttempt.topicSelection.topic}"）。対象セクション: ${citationReport.unsourcedSectionTitles.join(" / ")}`,
+      );
+    }
 
     // Step 2c: generate metadata from the final body to ensure title matches content
     const metadata = await this.metadataGenerator.generate({
