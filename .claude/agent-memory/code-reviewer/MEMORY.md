@@ -5,3 +5,4 @@
 - [Bluesky Error Response Sanitization (PR #56)](pattern_bluesky_error_handling.md) — 外部APIのエラーメッセージをそのままレスポンスに返さない; console.errorでサーバーサイドログに留める
 - [hreflang x-default cross-lang article pages](pattern_hreflang_xdefault.md) — localizePath では en 記事URLの x-default を正しく計算できない; 解決済み ja URL を使うこと
 - [D1 DB Binding Access Pattern](pattern_d1_binding_access.md) — env.DB は cloudflare:workers から取得; !env.DB ガード必須; FK は宣言のみで未enforced
+- [Article Body Regex Must Be Fence-Aware](pattern_article_body_regex_codeblocks.md) — text-processing over generated article Markdown must skip fenced code blocks; PostProcessor.ts has the correct pattern, CitationIntegrityChecker.ts (2026-07-03) did not

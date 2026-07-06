@@ -68,16 +68,19 @@ export class TopicSelector implements ITopicSelector {
         "3. Is most actionable/useful for working engineers\n" +
         "4. Has enough concrete technical details for a 1000-word deep dive — prefer topics where the sources contain specific numbers (benchmarks, version numbers, pricing), code examples, API names, or architectural details. Reject topics where all sources only contain high-level opinion or hype.\n" +
         "   MANDATORY REJECTION CRITERIA: Do NOT select a topic if ALL of the following apply: (a) the primary source is a trend/opinion article with NO implementation details such as API names, version numbers, or architectural specifics; (b) no other entry in the news list provides concrete implementation details about THIS SAME topic; (c) covering the topic would require relying on pre-training knowledge to fill technical sections. When a topic fails these criteria, skip it and choose a DIFFERENT topic that passes all criteria with at least 1 valid index. Never output an empty indices array — always select an alternative topic.\n" +
-        "5. Does NOT overlap with topics already covered in recent articles (see list below)\n\n" +
+        "   MARKETING CONTENT EXCLUSION (CRITICAL — ALWAYS REJECT, no exceptions): Advertisements, TV/video commercials, brand campaign videos, promotional videos, PR/brand-image pieces, and marketing announcements that describe a company's image, a creative campaign, or a hypothetical/fictional scenario — without disclosing any specific API, SDK, model name, version number, or architecture — ALWAYS satisfy rejection criterion (a) above, even if they name-drop a real product (e.g. a Google ad that shows Google Docs and Gemini in a fictional scenario contains ZERO API names, version numbers, or configuration details, and covering it would force fabricating a technical article about a commercial). If every entry in the news list is marketing/advertising content with no separate technical announcement, entry (c) above applies: pick the least-hype item available rather than inventing technical substance for an ad.\n" +
+        "   FORCED-CHOICE FALLBACK: If every entry in the list is disqualified by the criteria above (including marketing content), you must still return at least 1 valid index (never an empty array), but keep \"topic\" and \"reason\" narrowly scoped to describing that the day's news lacked technical substance, and output \"keyNewFacts\" as an empty array — do NOT invent plausible-sounding technical facts, library names, or product capabilities to compensate for missing source material.\n" +
+        "5. Does NOT overlap with topics already covered in recent articles (see list below)\n" +
+        "6. SINGLE-TOPIC RULE (CRITICAL): names exactly ONE product, feature, or announcement — never a combination of two or more, even if they come from the same company, the same digest post, or the same news cycle. If the two most interesting entries describe different products or features (e.g. a training-infrastructure feature and an unrelated API tutorial), you MUST pick only ONE of them and leave the other for a future article. A topic that would require the word \"and\" (or \"と\") to join two different product/feature names is two topics, not one — reject it and pick a single one instead.\n\n" +
         (input.hasFullTextInitial
           ? "Note: Full article body text has been retrieved for many of these entries. Prefer topics where the content field is detailed and substantive.\n\n"
           : "") +
         "If every high-depth topic has been covered, pick the news item that adds the most NEW technical information not in the past articles, and explain what's new in the reason.\n\n" +
         "Output ONLY valid JSON with exactly these keys:\n" +
-        '- "topic": English description of the chosen topic (1 sentence)\n' +
+        '- "topic": English description of the chosen topic (1 sentence). SINGLE-PRODUCT RULE (CRITICAL): The topic MUST describe exactly ONE product, service, or announcement — never combine multiple products, companies, or unrelated announcements with "and", "plus", "/", or commas. This is STRICTLY FORBIDDEN and causes article rejection. If your sentence contains " and " (or would need "と") to join two different product or feature names, you have picked two topics; keep only the stronger one. BAD: "Gemma 4 and Strands Evals SDK" (two unrelated products), "iOS 27 AI features and OpenAI spend controls" (two companies). GOOD: "iOS 27 Foundation Models framework for third-party app integration". Select only the single most interesting product or announcement and name it alone.\n' +
         '- "reason": why this is the best topic AND how it differs from past articles (1 sentence)\n' +
-        '- "indices": array of 1-based entry numbers that are DIRECTLY relevant to this topic. STRICT LIMIT: include at most 5 entries. Only include as many entries as are genuinely relevant — do NOT pad to reach any minimum number; 1-2 entries with perfect relevance is better than 5 with mixed topics. STRICT RELEVANCE RULE: only include an entry if it contains technical details, announcements, or official documentation SPECIFICALLY about the chosen topic — not merely about the same time period or industry. FORBIDDEN entries (must be excluded regardless): entries about a different company\'s financials (funding rounds, equity deals, layoffs, earnings reports), entries about unrelated products or workforce events even from the same company, general market commentary or opinion pieces without technical substance. CROSS-COMPANY EXCLUSION (CRITICAL): Once the topic is identified as Company A\'s product or service, ALL entries about any other company\'s products, services, workforce, or announcements are FORBIDDEN — regardless of how recent, technical, or industry-adjacent they appear. Example: if the topic is "Amazon Lex Assisted NLU", entries from OpenAI, IBM, SpaceX, Meta, Google, or any non-Amazon source MUST be excluded. Only include entries that are directly about the chosen topic or provide official technical context for it from the same vendor or a directly referenced standards body. FORBIDDEN SOURCE TYPES (must always be excluded regardless of topic): ASMR content, meditation, wellness, or lifestyle pages (identified by: ASMR in title/URL, or words like "manifest", "relax", "sleep" in title); hackathon project writeups for a domain unrelated to the chosen topic (e.g., a CNC manufacturing entry when topic is voice interfaces); any source where the only overlap with the chosen topic is a single common English word (e.g., both contain "whisper") but subject matter is unrelated. CONCRETE EXAMPLES OF FORBIDDEN INCLUSIONS: if the topic is a medical AI framework, an entry titled "Nvidia commits $40B to equity deals" or "Oracle workers negotiate severance" MUST be excluded — they are factually unrelated even if they are recent news. If an entry is about a different product made by the same company as the chosen topic, it MUST be excluded. When in doubt, EXCLUDE the entry. Fewer indices with perfect relevance is strictly better than more indices with mixed topics.\n' +
-        '- "keyNewFacts": array of 2-4 strings, each stating one SPECIFIC NEW fact from the selected entries: version numbers, exact node/server counts, newly removed dependencies, new API or feature names, architectural changes, or benchmark figures. These must be concrete and extractable from the source text — do NOT write vague summaries like "improved performance". Example: ["Supports up to 1,000 nodes GA, 4,000 nodes planned later in 2026", "Local control plane added — no longer requires Azure Arc connectivity", "External SAN (Fibre Channel / iSCSI) now supported as shared block storage"]\n' +
+        '- "indices": array of 1-based entry numbers that are DIRECTLY relevant to this topic. STRICT LIMIT: include at most 5 entries. Only include as many entries as are genuinely relevant — do NOT pad to reach any minimum number; 1-2 entries with perfect relevance is better than 5 with mixed topics. STRICT RELEVANCE RULE: only include an entry if it contains technical details, announcements, or official documentation SPECIFICALLY about the chosen topic — not merely about the same time period or industry. FORBIDDEN entries (must be excluded regardless): entries about a different company\'s financials (funding rounds, equity deals, layoffs, earnings reports), entries about unrelated products or workforce events even from the same company, general market commentary or opinion pieces without technical substance. CROSS-COMPANY EXCLUSION (CRITICAL): Once the topic is identified as Company A\'s product or service, ALL entries about any other company\'s products, services, workforce, or announcements are FORBIDDEN — regardless of how recent, technical, or industry-adjacent they appear. Example: if the topic is "Amazon Lex Assisted NLU", entries from OpenAI, IBM, SpaceX, Meta, Google, or any non-Amazon source MUST be excluded. Only include entries that are directly about the chosen topic or provide official technical context for it from the same vendor or a directly referenced standards body. FORBIDDEN SOURCE TYPES (must always be excluded regardless of topic): ASMR content, meditation, wellness, or lifestyle pages (identified by: ASMR in title/URL, or words like "manifest", "relax", "sleep" in title); hackathon project writeups for a domain unrelated to the chosen topic (e.g., a CNC manufacturing entry when topic is voice interfaces); any source where the only overlap with the chosen topic is a single common English word (e.g., both contain "whisper") but subject matter is unrelated. CONCRETE EXAMPLES OF FORBIDDEN INCLUSIONS: if the topic is a medical AI framework, an entry titled "Nvidia commits $40B to equity deals" or "Oracle workers negotiate severance" MUST be excluded — they are factually unrelated even if they are recent news. If an entry is about a different product made by the same company as the chosen topic, it MUST be excluded. SAME-COMPANY DIFFERENT-PRODUCT BAN (CRITICAL): Entries from the same vendor but covering a DIFFERENT product or blog post MUST be excluded. Example: if the topic is "Gemma 4 on Amazon Bedrock", an entry about "Strands Evals SDK failure detection" MUST be excluded even though both are AWS machine-learning blog posts — they describe different products. Only include multiple entries when they ALL describe the EXACT SAME product or announcement from different angles (e.g., an official release post and its companion deep-dive post about the same feature). When in doubt, EXCLUDE the entry. Fewer indices with perfect relevance is strictly better than more indices with mixed topics.\n' +
+        '- "keyNewFacts": array of 3-6 strings, each stating one SPECIFIC NEW fact from the selected entries. Include ALL of the following categories when present in the sources: version numbers, exact node/server counts, newly removed dependencies, new API or feature names, architectural changes, benchmark figures, pricing (e.g. "$5 input / $30 output per 1M tokens"), model/tier variants (e.g. "3 tiers: Sol flagship, Terra balanced, Luna fast"), and access restrictions (e.g. "limited to 20 government-approved partners"). These must be concrete and extractable from the source text — do NOT write vague summaries like "improved performance". Example: ["Supports up to 1,000 nodes GA, 4,000 nodes planned later in 2026", "Local control plane added — no longer requires Azure Arc connectivity", "External SAN (Fibre Channel / iSCSI) now supported as shared block storage"]\n' +
         '- "isDomainFallback": boolean — true if the selected topic is primarily about AWS or GCP (not Azure, RAG, LLM, or AI Agent), indicating this selection is a domain fallback because no primary-focus topic was available in the news list. false otherwise.\n' +
         "Output only the JSON object, no markdown fences.",
       user: avoidBlock + rejectedBlock + contextForSelection,
@@ -141,9 +144,18 @@ export class TopicSelector implements ITopicSelector {
           )
         : { entries: selectedEntries, keyNewFacts: topicSelection.keyNewFacts };
 
+    // Third-pass: programmatic vendor-domain filter.
+    // When the LLM audit fails to exclude entries from a different company's domain
+    // (e.g., keeping an openai.com entry for an Amazon Bedrock topic), this step
+    // removes them deterministically without relying on LLM instruction-following.
+    const vendorFiltered = this.filterEntriesByTopicVendor(
+      topicSelection.topic,
+      audited.entries,
+    );
+
     return {
       topicSelection: { ...topicSelection, keyNewFacts: audited.keyNewFacts },
-      selectedEntries: audited.entries,
+      selectedEntries: vendorFiltered,
     };
   }
 
@@ -177,12 +189,17 @@ export class TopicSelector implements ITopicSelector {
         model: TOPIC_SELECTION_MODEL,
         system:
           "You are a strict relevance auditor for a single-topic technical deep-dive blog.\n" +
+          "If the TOPIC sentence itself names more than one product or feature (joined by \"and\"/\"と\", or listed with a comma/slash), treat ONLY the first-named product/feature as the real topic for this audit — the rest is scope creep that must not survive.\n" +
           "Given a TOPIC and a numbered list of news entries, decide for each entry whether it covers the EXACT SAME product, service, or announcement as the TOPIC.\n" +
           "Exclude an entry if ANY of these apply:\n" +
           "- it is about a different company than the one in the TOPIC\n" +
           "- it is about a different product or service from the same company\n" +
           "- it is financial, workforce, or market news (funding, layoffs, earnings, equity deals)\n" +
           "- it is lifestyle or unrelated content that merely shares a word with the TOPIC\n" +
+          "- it is general product documentation for a service that the TOPIC's case study or announcement USES, but the entry itself is not specifically about the case study or announcement (e.g., an API Gateway documentation page when the TOPIC is a Rocket Close case study that uses API Gateway — the generic API Gateway docs are NOT specifically about Rocket Close's implementation and must be excluded)\n" +
+          "- it is a community forum post, discussion thread, or translation/localization initiative that is not directly about the TOPIC's specific product or feature — even if it is from the same company or ecosystem\n" +
+          "CRITICAL — Same provider ≠ same topic: If the TOPIC is a specific cloud service (e.g., 'Amazon Bedrock AgentCore Web Search'), entries about OTHER products or integrations from the same provider (e.g., 'Adobe Marketing Agent for Amazon Q', 'AWS Lambda pricing update') are DIFFERENT products and MUST be excluded. Sharing the same cloud provider name does NOT make two entries about the same topic. Third-party integration articles (e.g., 'Adobe integrates with AWS') must be excluded unless the third-party product itself IS the chosen TOPIC.\n" +
+          "EXAMPLE: TOPIC = 'Web Search on Amazon Bedrock AgentCore' → KEEP: entries about AgentCore Web Search feature. EXCLUDE: entries about Adobe Marketing Agent for Amazon Q (different product, different company's offering), entries about Amazon Bedrock pricing, entries about other AWS services.\n" +
           "A numbered FACTS list extracted from these entries may also be provided. A fact survives ONLY if it is supported by one of the KEPT entries; facts that originate from an excluded entry must be dropped.\n" +
           'Output ONLY JSON: {"keep": [entry numbers to keep], "keepFacts": [fact numbers supported by the kept entries]}. If no FACTS list is provided, output "keepFacts": []. When in doubt about an entry, exclude it.',
         user:
@@ -243,6 +260,93 @@ export class TopicSelector implements ITopicSelector {
       );
       return { entries, keyNewFacts };
     }
+  }
+
+  /**
+   * Programmatic third-pass vendor-domain filter.
+   *
+   * The LLM-based audit (auditEntryRelevance) sometimes fails to exclude entries from
+   * a different company when the topic clearly names a specific vendor (e.g., keeping
+   * an openai.com entry when the topic is "Amazon Bedrock Ops Alert"). This method
+   * resolves vendor identity from the topic string and removes entries from domains
+   * that do not belong to that vendor.
+   *
+   * Only activates when a recognized vendor keyword appears in the topic. When no
+   * vendor is identified the original list is returned unchanged so generic topics
+   * (e.g., "LLM inference optimization") are not inadvertently narrowed.
+   *
+   * Fails open: if filtering would drop every entry the original list is preserved.
+   */
+  private filterEntriesByTopicVendor(topic: string, entries: RssEntry[]): RssEntry[] {
+    const VENDOR_DOMAINS: Array<{ keywords: string[]; domains: string[] }> = [
+      {
+        keywords: ["amazon", " aws", "bedrock", "sagemaker", "rekognition", "kendra", "polly", "comprehend", "lex "],
+        domains: ["amazon.com", "amazonaws.com", "aws.amazon.com"],
+      },
+      {
+        keywords: ["azure", "microsoft", " copilot"],
+        domains: ["microsoft.com", "azure.com", "azure.microsoft.com"],
+      },
+      {
+        keywords: ["google ", "gemini", "vertex ai", " gcp", "deepmind"],
+        domains: ["google.com", "cloud.google.com", "deepmind.com", "googleapis.com"],
+      },
+      {
+        keywords: ["openai", "gpt-", "chatgpt", "dall-e", "sora", "whisper"],
+        domains: ["openai.com"],
+      },
+      {
+        keywords: ["anthropic", " claude"],
+        domains: ["anthropic.com"],
+      },
+      {
+        keywords: ["meta llama", "meta ai", " llama-"],
+        domains: ["meta.com", "ai.meta.com", "llama.meta.com"],
+      },
+    ];
+
+    const topicLower = ` ${topic.toLowerCase()} `;
+    let allowedDomains: string[] | null = null;
+
+    for (const vendor of VENDOR_DOMAINS) {
+      if (vendor.keywords.some((kw) => topicLower.includes(kw))) {
+        allowedDomains = vendor.domains;
+        break;
+      }
+    }
+
+    if (!allowedDomains) return entries;
+
+    const isAllowed = (link: string): boolean => {
+      try {
+        const hostname = new URL(link).hostname.replace(/^www\./, "").toLowerCase();
+        return allowedDomains!.some(
+          (domain) => hostname === domain || hostname.endsWith(`.${domain}`),
+        );
+      } catch {
+        return true;
+      }
+    };
+
+    const filtered = entries.filter((entry) => isAllowed(entry.link));
+
+    if (filtered.length === 0) {
+      console.warn(
+        `ベンダードメインフィルタ: 全エントリが除外されたため元のリストを保持: "${topic}"`,
+      );
+      return entries;
+    }
+
+    const removed = entries.length - filtered.length;
+    if (removed > 0) {
+      for (const entry of entries) {
+        if (!isAllowed(entry.link)) {
+          console.warn(`ベンダードメインフィルタで除外: ${entry.title} (${entry.link})`);
+        }
+      }
+    }
+
+    return filtered;
   }
 
   private buildContext(entries: RssEntry[]): string {

@@ -54,6 +54,17 @@ export interface IDraftGenerator {
   }): Promise<string>;
 }
 
+export interface CitationIntegrityReport {
+  totalSections: number;
+  unsourcedSections: number;
+  unsourcedRatio: number;
+  unsourcedSectionTitles: string[];
+}
+
+export interface ICitationIntegrityChecker {
+  analyze(body: string, lang: "ja" | "en"): CitationIntegrityReport;
+}
+
 export interface ITranslationService {
   parseArticleMarkdown(raw: string): TranslationSource | null;
   resolveTranslationSource(input: {
@@ -62,4 +73,14 @@ export interface ITranslationService {
     jaArticleContent?: string;
   }): Promise<TranslationSource | null>;
   translateArticle(source: TranslationSource, date: string): Promise<TranslationResult>;
+}
+
+/**
+ * Repairs structural Markdown artifacts the draft LLM occasionally emits
+ * (e.g. a link whose href is itself an unresolved `[label](url)` pair).
+ * Runs as an additive pass after PostProcessor.postProcess and does not
+ * alter any existing post-processing behavior.
+ */
+export interface IFactualIntegrityValidator {
+  validate(body: string): string;
 }
