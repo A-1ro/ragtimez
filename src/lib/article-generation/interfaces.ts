@@ -19,6 +19,16 @@ export interface ITopicSelector {
   }): Promise<{ topicSelection: TopicSelection; selectedEntries: RssEntry[] }>;
 }
 
+/**
+ * Deterministic (non-LLM) post-filter applied to a topic's selected entries.
+ * Exists as a code-level safety net alongside the LLM-based relevance audit,
+ * whose instruction-following is probabilistic and has repeatedly let
+ * cross-vendor entries survive into "one topic deep-dive" articles.
+ */
+export interface IEntryRelevanceFilter {
+  filter(entries: RssEntry[]): { entries: RssEntry[]; droppedDomains: string[] };
+}
+
 export interface IResearchEnricher {
   buildInitialResearch(input: {
     entries: RssEntry[];

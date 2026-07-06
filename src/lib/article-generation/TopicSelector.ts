@@ -2,9 +2,10 @@ import {
   MAX_TITLE_LENGTH,
   PAST_ARTICLES_LOOKBACK_DAYS,
 } from "./constants";
-import type { ITopicSelector } from "./interfaces";
+import type { IEntryRelevanceFilter, ITopicSelector } from "./interfaces";
 import { sanitizeExternalContent } from "./textUtils";
 import type { RssEntry } from "./types";
+import { VendorConsistencyFilter } from "./VendorConsistencyFilter";
 import type { ILlmClient } from "../llm/interfaces";
 
 const TOPIC_SELECTION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
@@ -25,7 +26,10 @@ export interface TopicSelection {
 }
 
 export class TopicSelector implements ITopicSelector {
-  constructor(private readonly llmClient: ILlmClient) {}
+  constructor(
+    private readonly llmClient: ILlmClient,
+    private readonly relevanceFilter: IEntryRelevanceFilter = new VendorConsistencyFilter(),
+  ) {}
 
   async select(input: {
     entries: RssEntry[];
@@ -141,9 +145,21 @@ export class TopicSelector implements ITopicSelector {
           )
         : { entries: selectedEntries, keyNewFacts: topicSelection.keyNewFacts };
 
+    const vendorFiltered = this.relevanceFilter.filter(audited.entries);
+    if (vendorFiltered.droppedDomains.length > 0) {
+      console.warn(
+        `ベンダー一貫性フィルタで除外（LLM監査をすり抜けたクロスベンダーのエントリ）: ${vendorFiltered.droppedDomains.join(", ")}`,
+      );
+    }
+    // Entries dropped here were not caught by the LLM's own fact audit, so any
+    // keyNewFacts extracted from them can no longer be attributed to a surviving
+    // [Source] block — drop the whole list rather than risk an unsourced MANDATORY fact.
+    const keyNewFacts =
+      vendorFiltered.entries.length < audited.entries.length ? [] : audited.keyNewFacts;
+
     return {
-      topicSelection: { ...topicSelection, keyNewFacts: audited.keyNewFacts },
-      selectedEntries: audited.entries,
+      topicSelection: { ...topicSelection, keyNewFacts },
+      selectedEntries: vendorFiltered.entries,
     };
   }
 

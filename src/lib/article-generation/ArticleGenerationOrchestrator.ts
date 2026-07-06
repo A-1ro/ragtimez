@@ -38,7 +38,7 @@ export class ArticleGenerationOrchestrator {
   }> {
     const rejectedTopics: string[] = [];
     let bestAttempt: {
-      topicSelection: { topic: string; reason: string; indices: number[] };
+      topicSelection: { topic: string; reason: string; indices: number[]; keyNewFacts?: string[] };
       topicEntries: RssEntry[];
       selectedEntries: RssEntry[];
       fullTextMap?: Map<string, string>;
@@ -181,7 +181,7 @@ export class ArticleGenerationOrchestrator {
     const newFactsBlock =
       keyNewFacts.length > 0
         ? "**MANDATORY — KEY NEW FACTS FROM THIS ANNOUNCEMENT (must appear in article, do not omit or vague-ify):**\n" +
-          keyNewFacts.map((f) => `- ${f}`).join("\n") +
+          keyNewFacts.map((f: string) => `- ${f}`).join("\n") +
           "\n\n"
         : "";
     const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
