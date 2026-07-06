@@ -1,0 +1,80 @@
+---
+// 記事末尾の収益導線。GitHub Sponsors ボタン＋（任意の）アフィリエイト枠。
+// アフィリエイトは PUBLIC_AFFILIATE_HTML があるときだけ表示（未設定でも崩れない）。
+//
+// 設定（任意）:
+//   PUBLIC_SPONSOR_USER      GitHub Sponsors のユーザー名（既定: A-1ro）
+//   PUBLIC_AFFILIATE_LABEL   アフィリエイト枠の見出し
+//   PUBLIC_AFFILIATE_HTML    アフィリエイトリンク/バナーのHTML
+
+interface Props {
+  lang?: "ja" | "en";
+}
+const { lang = "ja" } = Astro.props;
+
+const sponsorUser = import.meta.env.PUBLIC_SPONSOR_USER ?? "A-1ro";
+const affiliateLabel = import.meta.env.PUBLIC_AFFILIATE_LABEL ?? "";
+const affiliateHtml = import.meta.env.PUBLIC_AFFILIATE_HTML ?? "";
+
+const t =
+  lang === "en"
+    ? { lead: "If this article helped, your support means a lot.", btn: "Support on GitHub Sponsors" }
+    : { lead: "この記事が役に立ったら、応援してもらえるとうれしいです。", btn: "GitHub Sponsors で支援する" };
+---
+
+<aside class="support">
+  <p class="support-lead">{t.lead}</p>
+  <a class="sponsor-btn" href={`https://github.com/sponsors/${sponsorUser}`} target="_blank" rel="noopener">
+    <span class="heart">♥</span> {t.btn}
+  </a>
+
+  {affiliateHtml && (
+    <div class="affiliate">
+      {affiliateLabel && <div class="affiliate-label">{affiliateLabel}</div>}
+      <div class="affiliate-body" set:html={affiliateHtml} />
+    </div>
+  )}
+</aside>
+
+<style>
+  .support {
+    margin: 40px 0 8px;
+    padding: 24px;
+    border: 1px solid var(--color-border);
+    border-radius: 12px;
+    background: var(--color-accent-soft);
+  }
+  .support-lead {
+    margin: 0 0 16px;
+    color: var(--color-muted);
+    font-size: 0.94rem;
+  }
+  .sponsor-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 18px;
+    border: 1px solid var(--color-accent);
+    border-radius: 8px;
+    color: var(--color-accent);
+    text-decoration: none;
+    font-weight: 600;
+    font-size: 0.92rem;
+    transition: background 0.15s, color 0.15s;
+  }
+  .sponsor-btn:hover {
+    background: var(--color-accent);
+    color: var(--color-bg);
+  }
+  .heart { font-size: 1.05em; }
+  .affiliate {
+    margin-top: 20px;
+    padding-top: 20px;
+    border-top: 1px dashed var(--color-border);
+  }
+  .affiliate-label {
+    color: var(--color-muted);
+    font-size: 0.82rem;
+    margin-bottom: 10px;
+  }
+</style>

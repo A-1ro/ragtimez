@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import BaseLayout from "../../../layouts/BaseLayout.astro";
+import SupportBox from "../../../components/SupportBox.astro";
 import { getTrustLabel, getTrustColor } from "../../../constants/trustLevels";
 import { formatDate } from "../../../utils/date";
 import { computeArticleQualityFromData } from "../../../lib/quality";
@@ -147,6 +148,8 @@ const alternateLangHref: string | null = counterpart
     <div class="article-body prose">
       <Content />
     </div>
+
+    <SupportBox lang="en" />
 
     {article.data.sources.length > 0 && (
       <aside class="sources">

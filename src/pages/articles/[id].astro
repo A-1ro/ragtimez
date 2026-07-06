@@ -1,6 +1,7 @@
 ---
 import { getCollection, render } from "astro:content";
 import BaseLayout from "../../layouts/BaseLayout.astro";
+import SupportBox from "../../components/SupportBox.astro";
 import { trustLabelMap } from "../../constants/trustLevels";
 import { formatDate } from "../../utils/date";
 import { computeArticleQualityFromData, GRADE_COLORS } from "../../lib/quality";
@@ -189,6 +190,8 @@ if (user && env.DB) {
     <div class="article-body prose">
       <Content />
     </div>
+
+    <SupportBox lang="ja" />
 
     {article.data.sources.length > 0 && (
       <aside class="sources">
