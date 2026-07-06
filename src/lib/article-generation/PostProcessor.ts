@@ -87,8 +87,25 @@ export function stripFabricatedCitations(
     },
   );
 
+  // Strip fabricated inline hyperlinks [text](url) where the URL is not in the allowed set.
+  // Negative lookbehind excludes image links ![alt](src).
+  // At this point, citation-format links have already been processed (their URLs removed),
+  // so remaining [text](url) patterns are inline body links, which are equally subject to
+  // the fabrication ban — the LLM must not invent URLs from pre-training knowledge.
+  stripped = stripped.replace(
+    /(?<!!)\[([^\]]+)\]\(([^)\s]+)\)/g,
+    (match, text: string, url: string) => {
+      if (!isAllowed(url)) {
+        count++;
+        console.warn(`捏造インラインURL削除: ${url.trim()}`);
+        return text;
+      }
+      return match;
+    },
+  );
+
   if (count > 0) {
-    console.warn(`合計 ${count} 件の捏造出典URLを除去しました`);
+    console.warn(`合計 ${count} 件の捏造URLを除去しました`);
   }
 
   return stripped;
