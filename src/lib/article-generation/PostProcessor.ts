@@ -216,6 +216,11 @@ export async function postProcess(
   // These are prompt instructions, not article content.
   result = result.replace(/\*\*MANDATORY[^*\n]*\*\*\n(?:- [^\n]*\n)*\n?/g, "");
 
+  // Remove empty ## sections: a ## heading immediately followed by another ## heading
+  // (with only blank lines between) has no body content and acts as a spurious title.
+  // This is a safety net for the DraftGenerator prompt rule that forbids empty sections.
+  result = result.replace(/^## [^\n]+\n+(?=## )/gm, "");
+
   const segments = result.split(/(```[\s\S]*?```)/g);
   result = segments.map((segment, i) => {
     if (i % 2 === 1) return segment;
