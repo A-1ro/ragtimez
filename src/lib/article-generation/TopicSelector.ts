@@ -184,6 +184,7 @@ export class TopicSelector implements ITopicSelector {
           "- it is financial, workforce, or market news (funding, layoffs, earnings, equity deals)\n" +
           "- it is lifestyle or unrelated content that merely shares a word with the TOPIC\n" +
           "- it is general product documentation for a service that the TOPIC's case study or announcement USES, but the entry itself is not specifically about the case study or announcement (e.g., an API Gateway documentation page when the TOPIC is a Rocket Close case study that uses API Gateway — the generic API Gateway docs are NOT specifically about Rocket Close's implementation and must be excluded)\n" +
+          "- it is a community forum post, discussion thread, or translation/localization initiative that is not directly about the TOPIC's specific product or feature — even if it is from the same company or ecosystem\n" +
           "A numbered FACTS list extracted from these entries may also be provided. A fact survives ONLY if it is supported by one of the KEPT entries; facts that originate from an excluded entry must be dropped.\n" +
           'Output ONLY JSON: {"keep": [entry numbers to keep], "keepFacts": [fact numbers supported by the kept entries]}. If no FACTS list is provided, output "keepFacts": []. When in doubt about an entry, exclude it.',
         user:
