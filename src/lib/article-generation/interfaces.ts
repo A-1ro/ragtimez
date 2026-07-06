@@ -54,6 +54,16 @@ export interface IDraftGenerator {
   }): Promise<string>;
 }
 
+export interface ICitationLinkProcessor {
+  /**
+   * Normalises malformed citation-link syntax and strips any citation URL
+   * not present in `allowedUrls`, replacing it with a "not documented"
+   * placeholder so hallucinated source links never reach the published
+   * article.
+   */
+  process(body: string, allowedUrls: Set<string>): string;
+}
+
 export interface ITranslationService {
   parseArticleMarkdown(raw: string): TranslationSource | null;
   resolveTranslationSource(input: {
