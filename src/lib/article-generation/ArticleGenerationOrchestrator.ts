@@ -1,8 +1,10 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
+import { CitationFormatNormalizer } from "./CitationFormatNormalizer";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
+  ICitationFormatNormalizer,
   ICitationIntegrityChecker,
   IDraftGenerator,
   IFactualIntegrityValidator,
@@ -25,6 +27,7 @@ export class ArticleGenerationOrchestrator {
     private readonly draftGenerator: IDraftGenerator,
     factualIntegrityValidator?: IFactualIntegrityValidator,
     private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
+    private readonly citationFormatNormalizer: ICitationFormatNormalizer = new CitationFormatNormalizer(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
   }
@@ -197,13 +200,18 @@ export class ArticleGenerationOrchestrator {
     const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
 
     // Step 2a: generate draft body first
-    const draftBody = await this.draftGenerator.generate({
+    const rawDraftBody = await this.draftGenerator.generate({
       contextBlock,
       lang: input.lang,
       hasFullText,
     });
-    if (!draftBody) throw new Error("LLM returned empty draft body");
-    console.log(`Step 2a draft complete: ${draftBody.length} chars`);
+    if (!rawDraftBody) throw new Error("LLM returned empty draft body");
+    console.log(`Step 2a draft complete: ${rawDraftBody.length} chars`);
+
+    // Step 2a-1: normalize malformed citation syntax (bare URL + nested parenthesized
+    // URL instead of a Markdown link) before any downstream regex-based pass — those
+    // passes only recognize `[title](url)` citations or a matching full-width closer.
+    const draftBody = this.citationFormatNormalizer.normalize(rawDraftBody);
 
     // Step 2b: post-process draft
     let finalBody = draftBody;
