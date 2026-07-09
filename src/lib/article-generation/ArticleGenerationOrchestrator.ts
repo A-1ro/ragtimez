@@ -1,11 +1,13 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
+import { HeadingStructureValidator } from "./HeadingStructureValidator";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
   ICitationIntegrityChecker,
   IDraftGenerator,
   IFactualIntegrityValidator,
+  IHeadingStructureValidator,
   IMetadataGenerator,
   IResearchEnricher,
   SearchUsageBudget,
@@ -17,6 +19,7 @@ import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
   private readonly factualIntegrityValidator: IFactualIntegrityValidator;
+  private readonly headingStructureValidator: IHeadingStructureValidator;
 
   constructor(
     private readonly topicSelector: ITopicSelector,
@@ -25,8 +28,10 @@ export class ArticleGenerationOrchestrator {
     private readonly draftGenerator: IDraftGenerator,
     factualIntegrityValidator?: IFactualIntegrityValidator,
     private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
+    headingStructureValidator?: IHeadingStructureValidator,
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
+    this.headingStructureValidator = headingStructureValidator ?? new HeadingStructureValidator();
   }
 
   async generate(input: {
@@ -223,6 +228,11 @@ export class ArticleGenerationOrchestrator {
     // Step 2b-2: repair structural Markdown artifacts (e.g. nested link hrefs)
     // that survive post-processing. Additive pass, independent of postProcess.
     finalBody = this.factualIntegrityValidator.validate(finalBody);
+
+    // Step 2b-3: flatten any ### sub-headings the model nested under a single
+    // ## wrapper despite the flat-heading rule. Additive pass, independent of
+    // postProcess and factualIntegrityValidator.
+    finalBody = this.headingStructureValidator.validate(finalBody);
 
     // Observability only: flag sections whose citation was stripped as fabricated (or was
     // never present), since that usually means the section's PROSE — not just its citation —

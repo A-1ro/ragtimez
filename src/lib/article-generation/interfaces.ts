@@ -84,3 +84,14 @@ export interface ITranslationService {
 export interface IFactualIntegrityValidator {
   validate(body: string): string;
 }
+
+/**
+ * Repairs the "## wrapper containing ### sub-sections" structure the draft
+ * LLM occasionally emits despite the prompt's flat-heading requirement.
+ * Runs as an additive pass, independent of PostProcessor.postProcess and
+ * IFactualIntegrityValidator, and does not alter any existing behavior for
+ * articles that already use a flat ## structure.
+ */
+export interface IHeadingStructureValidator {
+  validate(body: string): string;
+}
