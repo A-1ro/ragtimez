@@ -261,10 +261,14 @@ export class TranslationService implements ITranslationService {
     const bodySystemPrompt =
       "You are a professional translator specializing in technical content.\n" +
       "Translate the following Japanese Markdown article to English.\n" +
-      "Preserve all Markdown formatting (headings, lists, code blocks, links, bold, etc.) exactly.\n" +
+      "Preserve the Markdown SYNTAX exactly (heading levels, list markers, code fences, links, bold) — " +
+      "but translate the TEXT CONTENT of every element into natural English.\n" +
+      "CRITICAL: every ## heading title must be translated into English too — do NOT leave any ## heading " +
+      "in Japanese. Example: '## データセットの拡張の仕組み' must become something like " +
+      "'## How Dataset Enrichment Works', never be left as-is.\n" +
       "Keep technical terms, API names, model names, URLs, and code snippets as-is.\n" +
-      "Maintain the same paragraph structure and section headings.\n" +
-      "The last section ## まとめ should be translated as ## Summary.\n" +
+      "Maintain the same paragraph structure and the same number of sections.\n" +
+      "The last section heading (## まとめ) must become ## Summary.\n" +
       "Output only the translated Markdown, nothing else.";
 
     const bodyResponse = await this.ai.run(TRANSLATION_MODEL, {

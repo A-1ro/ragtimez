@@ -84,3 +84,22 @@ export interface ITranslationService {
 export interface IFactualIntegrityValidator {
   validate(body: string): string;
 }
+
+/**
+ * Rewrites malformed citation markers — e.g. a bare URL immediately followed
+ * by a second, unbracketed parenthesized URL such as
+ * `（出典: https://a.com/page(https://a.com/)）` — into the canonical
+ * `（出典: [title](url)）` / `(Source: [title](url))` Markdown-link form.
+ *
+ * PostProcessor.stripFabricatedCitations, PostProcessor.removeSummaryCitations,
+ * and sourceMetadata.filterSourcesByCited all require a `[text](url)` link to
+ * detect and validate a citation. When the draft LLM emits a bare-URL citation
+ * instead, those existing safety nets silently pass it through unexamined —
+ * so a fabricated or off-topic URL can survive into ## Summary / frontmatter
+ * sources undetected. This runs as an additive pass BEFORE PostProcessor.postProcess
+ * so those existing checks keep working unmodified; citations that are already
+ * well-formed are left untouched.
+ */
+export interface ICitationFormatNormalizer {
+  normalize(body: string, lang: "ja" | "en"): string;
+}

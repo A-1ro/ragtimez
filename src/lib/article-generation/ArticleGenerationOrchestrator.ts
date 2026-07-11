@@ -1,8 +1,10 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
+import { CitationFormatNormalizer } from "./CitationFormatNormalizer";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
+  ICitationFormatNormalizer,
   ICitationIntegrityChecker,
   IDraftGenerator,
   IFactualIntegrityValidator,
@@ -25,6 +27,7 @@ export class ArticleGenerationOrchestrator {
     private readonly draftGenerator: IDraftGenerator,
     factualIntegrityValidator?: IFactualIntegrityValidator,
     private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
+    private readonly citationFormatNormalizer: ICitationFormatNormalizer = new CitationFormatNormalizer(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
   }
@@ -205,11 +208,18 @@ export class ArticleGenerationOrchestrator {
     if (!draftBody) throw new Error("LLM returned empty draft body");
     console.log(`Step 2a draft complete: ${draftBody.length} chars`);
 
+    // Step 2a-1: normalize malformed citation markers (bare URLs, missing Markdown
+    // link brackets) into the canonical [title](url) form. Must run before
+    // postProcess/filterSourcesByCited so those existing citation checks — which
+    // only recognize proper Markdown links — can actually see and validate every
+    // citation the draft LLM wrote.
+    const normalizedDraft = this.citationFormatNormalizer.normalize(draftBody, input.lang);
+
     // Step 2b: post-process draft
-    let finalBody = draftBody;
+    let finalBody = normalizedDraft;
     try {
       if (input.db) {
-        finalBody = await postProcess(draftBody, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
+        finalBody = await postProcess(normalizedDraft, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
         console.log(`Step 2b post-processing complete: ${finalBody.length} chars`);
       } else {
         console.warn("Step 2b post-processing skipped: db not provided");
