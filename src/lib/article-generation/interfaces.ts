@@ -84,3 +84,34 @@ export interface ITranslationService {
 export interface IFactualIntegrityValidator {
   validate(body: string): string;
 }
+
+/**
+ * Promotes `###`+ headings to `##`.
+ *
+ * The DraftGenerator prompt forbids `###` anywhere in the article body —
+ * nesting sub-sections under one `##` wrapper produces a single bloated
+ * section instead of the intended flat `## A` -> `## B` -> ... -> `##
+ * まとめ/Summary` structure, and silently breaks every other
+ * section-boundary-based check downstream (CitationIntegrityChecker,
+ * ICitationPlacementNormalizer), since they all split on `## ` boundaries.
+ * Mechanical, deterministic — never judges content, only heading level, and
+ * never touches fenced code blocks.
+ */
+export interface IHeadingLevelNormalizer {
+  normalize(body: string): string;
+}
+
+/**
+ * Deterministically enforces two DraftGenerator citation rules that the
+ * generation prompt already states but the model does not reliably follow:
+ *  1. The section-end citation must appear at the END of a section, not
+ *     immediately below the heading.
+ *  2. When the same source URL is cited by 3+ non-summary sections, the
+ *     2nd and later occurrences must be abbreviated to a "see above" form
+ *     instead of repeating the full citation.
+ * Purely structural — does not judge or alter factual content, and never
+ * touches the ## まとめ / ## Summary section.
+ */
+export interface ICitationPlacementNormalizer {
+  normalize(body: string, lang: "ja" | "en"): string;
+}
