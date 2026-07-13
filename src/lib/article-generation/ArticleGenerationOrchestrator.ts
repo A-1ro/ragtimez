@@ -1,5 +1,6 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
+import { SectionRedundancyChecker } from "./SectionRedundancyChecker";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
@@ -8,6 +9,7 @@ import type {
   IFactualIntegrityValidator,
   IMetadataGenerator,
   IResearchEnricher,
+  ISectionRedundancyChecker,
   SearchUsageBudget,
   ITopicSelector,
 } from "./interfaces";
@@ -25,6 +27,7 @@ export class ArticleGenerationOrchestrator {
     private readonly draftGenerator: IDraftGenerator,
     factualIntegrityValidator?: IFactualIntegrityValidator,
     private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
+    private readonly sectionRedundancyChecker: ISectionRedundancyChecker = new SectionRedundancyChecker(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
   }
@@ -233,6 +236,20 @@ export class ArticleGenerationOrchestrator {
         `引用整合性チェック: ${citationReport.unsourcedSections}/${citationReport.totalSections} セクションに有効な出典なし ` +
           `（トピック: "${finalAttempt.topicSelection.topic}"）。対象セクション: ${citationReport.unsourcedSectionTitles.join(" / ")}`,
       );
+    }
+
+    // Observability only: flag near-duplicate sentences repeated across sections.
+    // The draft-generation prompt already forbids this, but nothing previously verified
+    // compliance. Does not alter finalBody.
+    const redundancyReport = this.sectionRedundancyChecker.analyze(finalBody, input.lang);
+    if (redundancyReport.duplicatePairs.length > 0) {
+      for (const pair of redundancyReport.duplicatePairs) {
+        console.warn(
+          `セクション間重複検出（類似度=${pair.similarity.toFixed(2)}）: ` +
+            `"${pair.sectionA}" ↔ "${pair.sectionB}" — "${pair.sentenceA}" / "${pair.sentenceB}" ` +
+            `（トピック: "${finalAttempt.topicSelection.topic}"）`,
+        );
+      }
     }
 
     // Step 2c: generate metadata from the final body to ensure title matches content
