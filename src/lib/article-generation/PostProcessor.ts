@@ -243,20 +243,22 @@ export async function postProcess(
     result = result.replaceAll(row.wrong_form, row.correct_form);
   }
 
+  // `suggestion` is editorial guidance for a human reviewer (e.g. "主語を明確にし能動態で書く"
+  // — "clarify the subject and use active voice"), not replacement text for the matched phrase.
+  // It must never be spliced into the article body: doing so previously produced corrupted
+  // sentences such as "...適応させること主語を明確にし能動態で書く。" when the banned phrase
+  // "ができます" was blindly replaced with its improvement suggestion. Only log it as a warning.
   const banned = await db.prepare(
     "SELECT pattern, severity, suggestion FROM postprocess_banned_phrases"
   ).all<{ pattern: string; severity: string; suggestion: string | null }>();
   for (const row of banned.results) {
     try {
       const regex = new RegExp(row.pattern, "g");
-      const before = result;
-      if (row.suggestion !== null) {
-        result = result.replace(regex, row.suggestion);
-        if (result !== before) {
-          console.warn(`禁止フレーズを置換 [${row.severity}]: "${row.pattern}" → "${row.suggestion}"`);
-        }
-      } else if (regex.test(result)) {
-        console.warn(`禁止フレーズ検出 [${row.severity}]: "${row.pattern}"（置換候補なし）`);
+      if (regex.test(result)) {
+        console.warn(
+          `禁止フレーズ検出 [${row.severity}]: "${row.pattern}"` +
+            (row.suggestion ? `（改善提案: ${row.suggestion}）` : "（改善提案なし）"),
+        );
       }
     } catch (err) {
       console.warn(`禁止フレーズの正規表現が不正です: "${row.pattern}" — ${err instanceof Error ? err.message : String(err)}`);
