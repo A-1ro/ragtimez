@@ -19,6 +19,16 @@ export interface ITopicSelector {
   }): Promise<{ topicSelection: TopicSelection; selectedEntries: RssEntry[] }>;
 }
 
+/**
+ * Deterministic (non-LLM) post-filter applied to a topic's selected entries.
+ * Exists as a code-level safety net alongside the LLM-based relevance audit,
+ * whose instruction-following is probabilistic and has repeatedly let
+ * cross-vendor entries survive into "one topic deep-dive" articles.
+ */
+export interface IEntryRelevanceFilter {
+  filter(entries: RssEntry[]): { entries: RssEntry[]; droppedDomains: string[] };
+}
+
 export interface IResearchEnricher {
   buildInitialResearch(input: {
     entries: RssEntry[];
@@ -83,4 +93,69 @@ export interface ITranslationService {
  */
 export interface IFactualIntegrityValidator {
   validate(body: string): string;
+}
+
+/**
+ * Rewrites malformed citation markers — e.g. a bare URL immediately followed
+ * by a second, unbracketed parenthesized URL such as
+ * `（出典: https://a.com/page(https://a.com/)）` — into the canonical
+ * `（出典: [title](url)）` / `(Source: [title](url))` Markdown-link form.
+ *
+ * PostProcessor.stripFabricatedCitations, PostProcessor.removeSummaryCitations,
+ * and sourceMetadata.filterSourcesByCited all require a `[text](url)` link to
+ * detect and validate a citation. When the draft LLM emits a bare-URL citation
+ * instead, those existing safety nets silently pass it through unexamined —
+ * so a fabricated or off-topic URL can survive into ## Summary / frontmatter
+ * sources undetected. This runs as an additive pass BEFORE PostProcessor.postProcess
+ * so those existing checks keep working unmodified; citations that are already
+ * well-formed are left untouched.
+ */
+export interface ICitationFormatNormalizer {
+  normalize(body: string, lang: "ja" | "en"): string;
+}
+
+/**
+ * Repairs the "## wrapper containing ### sub-sections" structure the draft
+ * LLM occasionally emits despite the prompt's flat-heading requirement.
+ * Runs as an additive pass, independent of PostProcessor.postProcess and
+ * IFactualIntegrityValidator, and does not alter any existing behavior for
+ * articles that already use a flat ## structure.
+ */
+export interface IHeadingStructureValidator {
+  validate(body: string): string;
+}
+
+/**
+ * Deterministically enforces two DraftGenerator citation rules that the
+ * generation prompt already states but the model does not reliably follow:
+ *  1. The section-end citation must appear at the END of a section, not
+ *     immediately below the heading.
+ *  2. When the same source URL is cited by 3+ non-summary sections, the
+ *     2nd and later occurrences must be abbreviated to a "see above" form
+ *     instead of repeating the full citation.
+ * Purely structural — does not judge or alter factual content, and never
+ * touches the ## まとめ / ## Summary section.
+ */
+export interface ICitationPlacementNormalizer {
+  normalize(body: string, lang: "ja" | "en"): string;
+}
+
+export interface SectionRedundancyReport {
+  totalSections: number;
+  duplicatePairs: Array<{
+    sectionA: string;
+    sectionB: string;
+    sentenceA: string;
+    sentenceB: string;
+    similarity: number;
+  }>;
+}
+
+/**
+ * Detects near-duplicate sentences repeated across non-summary ## sections.
+ * Observability only — mirrors ICitationIntegrityChecker: does not alter the
+ * article body, gate publication, or change control flow.
+ */
+export interface ISectionRedundancyChecker {
+  analyze(body: string, lang: "ja" | "en"): SectionRedundancyReport;
 }

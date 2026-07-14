@@ -1,13 +1,21 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
+import { CitationFormatNormalizer } from "./CitationFormatNormalizer";
+import { CitationPlacementNormalizer } from "./CitationPlacementNormalizer";
+import { HeadingStructureValidator } from "./HeadingStructureValidator";
+import { SectionRedundancyChecker } from "./SectionRedundancyChecker";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
+  ICitationFormatNormalizer,
   ICitationIntegrityChecker,
+  ICitationPlacementNormalizer,
   IDraftGenerator,
   IFactualIntegrityValidator,
+  IHeadingStructureValidator,
   IMetadataGenerator,
   IResearchEnricher,
+  ISectionRedundancyChecker,
   SearchUsageBudget,
   ITopicSelector,
 } from "./interfaces";
@@ -17,6 +25,7 @@ import type { RssEntry } from "./types";
 
 export class ArticleGenerationOrchestrator {
   private readonly factualIntegrityValidator: IFactualIntegrityValidator;
+  private readonly headingStructureValidator: IHeadingStructureValidator;
 
   constructor(
     private readonly topicSelector: ITopicSelector,
@@ -25,8 +34,13 @@ export class ArticleGenerationOrchestrator {
     private readonly draftGenerator: IDraftGenerator,
     factualIntegrityValidator?: IFactualIntegrityValidator,
     private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
+    private readonly citationFormatNormalizer: ICitationFormatNormalizer = new CitationFormatNormalizer(),
+    headingStructureValidator?: IHeadingStructureValidator,
+    private readonly citationPlacementNormalizer: ICitationPlacementNormalizer = new CitationPlacementNormalizer(),
+    private readonly sectionRedundancyChecker: ISectionRedundancyChecker = new SectionRedundancyChecker(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
+    this.headingStructureValidator = headingStructureValidator ?? new HeadingStructureValidator();
   }
 
   async generate(input: {
@@ -48,7 +62,7 @@ export class ArticleGenerationOrchestrator {
   }> {
     const rejectedTopics: string[] = [];
     let bestAttempt: {
-      topicSelection: { topic: string; reason: string; indices: number[] };
+      topicSelection: { topic: string; reason: string; indices: number[]; keyNewFacts?: string[] };
       topicEntries: RssEntry[];
       selectedEntries: RssEntry[];
       fullTextMap?: Map<string, string>;
@@ -191,25 +205,32 @@ export class ArticleGenerationOrchestrator {
     const newFactsBlock =
       keyNewFacts.length > 0
         ? "**MANDATORY — KEY NEW FACTS FROM THIS ANNOUNCEMENT (must appear in article, do not omit or vague-ify):**\n" +
-          keyNewFacts.map((f) => `- ${f}`).join("\n") +
+          keyNewFacts.map((f: string) => `- ${f}`).join("\n") +
           "\n\n"
         : "";
     const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
 
     // Step 2a: generate draft body first
-    const draftBody = await this.draftGenerator.generate({
+    const rawDraftBody = await this.draftGenerator.generate({
       contextBlock,
       lang: input.lang,
       hasFullText,
     });
-    if (!draftBody) throw new Error("LLM returned empty draft body");
-    console.log(`Step 2a draft complete: ${draftBody.length} chars`);
+    if (!rawDraftBody) throw new Error("LLM returned empty draft body");
+    console.log(`Step 2a draft complete: ${rawDraftBody.length} chars`);
+
+    // Step 2a-1: normalize malformed citation markers (bare URLs, missing Markdown
+    // link brackets) into the canonical [title](url) form. Must run before
+    // postProcess/filterSourcesByCited so those existing citation checks — which
+    // only recognize proper Markdown links — can actually see and validate every
+    // citation the draft LLM wrote.
+    const normalizedDraft = this.citationFormatNormalizer.normalize(rawDraftBody, input.lang);
 
     // Step 2b: post-process draft
-    let finalBody = draftBody;
+    let finalBody = normalizedDraft;
     try {
       if (input.db) {
-        finalBody = await postProcess(draftBody, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
+        finalBody = await postProcess(normalizedDraft, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
         console.log(`Step 2b post-processing complete: ${finalBody.length} chars`);
       } else {
         console.warn("Step 2b post-processing skipped: db not provided");
@@ -220,9 +241,15 @@ export class ArticleGenerationOrchestrator {
       );
     }
 
-    // Step 2b-2: repair structural Markdown artifacts (e.g. nested link hrefs)
+    // Step 2b-1: repair structural Markdown artifacts (e.g. nested link hrefs)
     // that survive post-processing. Additive pass, independent of postProcess.
     finalBody = this.factualIntegrityValidator.validate(finalBody);
+
+    // Step 2b-2: promote any ### (or deeper) headings to ##. The draft prompt forbids
+    // ### anywhere, but when the model nests sub-sections under one ## wrapper anyway,
+    // every downstream check below splits on "## " boundaries and silently treats the
+    // whole nested block as a single section — this repairs that before they run.
+    finalBody = this.headingStructureValidator.validate(finalBody);
 
     // Observability only: flag sections whose citation was stripped as fabricated (or was
     // never present), since that usually means the section's PROSE — not just its citation —
@@ -234,6 +261,27 @@ export class ArticleGenerationOrchestrator {
           `（トピック: "${finalAttempt.topicSelection.topic}"）。対象セクション: ${citationReport.unsourcedSectionTitles.join(" / ")}`,
       );
     }
+
+    // Observability only: flag near-duplicate sentences repeated across sections.
+    // The draft-generation prompt already forbids this, but nothing previously verified
+    // compliance. Does not alter finalBody.
+    const redundancyReport = this.sectionRedundancyChecker.analyze(finalBody, input.lang);
+    if (redundancyReport.duplicatePairs.length > 0) {
+      for (const pair of redundancyReport.duplicatePairs) {
+        console.warn(
+          `セクション間重複検出（類似度=${pair.similarity.toFixed(2)}）: ` +
+            `"${pair.sectionA}" ↔ "${pair.sectionB}" — "${pair.sentenceA}" / "${pair.sentenceB}" ` +
+            `（トピック: "${finalAttempt.topicSelection.topic}"）`,
+        );
+      }
+    }
+
+    // Step 2b-3: reposition section-end citations that the model placed right below the
+    // heading instead of at the section end, and collapse citations to the same URL
+    // repeated across 3+ sections into the prompt's documented "see above" abbreviation.
+    // Purely structural — runs after the observability checks above so citationReport and
+    // redundancyReport still reflect the model's raw, unmodified output.
+    finalBody = this.citationPlacementNormalizer.normalize(finalBody, input.lang);
 
     // Step 2c: generate metadata from the final body to ensure title matches content
     const metadata = await this.metadataGenerator.generate({
