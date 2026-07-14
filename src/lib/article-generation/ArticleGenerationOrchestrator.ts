@@ -213,16 +213,18 @@ export class ArticleGenerationOrchestrator {
     if (!rawDraftBody) throw new Error("LLM returned empty draft body");
     console.log(`Step 2a draft complete: ${rawDraftBody.length} chars`);
 
-    // Step 2a-1: normalize malformed citation syntax (bare URL + nested parenthesized
-    // URL instead of a Markdown link) before any downstream regex-based pass — those
-    // passes only recognize `[title](url)` citations or a matching full-width closer.
-    const draftBody = this.citationFormatNormalizer.normalize(rawDraftBody);
+    // Step 2a-1: normalize malformed citation markers (bare URLs, missing Markdown
+    // link brackets) into the canonical [title](url) form. Must run before
+    // postProcess/filterSourcesByCited so those existing citation checks — which
+    // only recognize proper Markdown links — can actually see and validate every
+    // citation the draft LLM wrote.
+    const normalizedDraft = this.citationFormatNormalizer.normalize(rawDraftBody, input.lang);
 
     // Step 2b: post-process draft
-    let finalBody = draftBody;
+    let finalBody = normalizedDraft;
     try {
       if (input.db) {
-        finalBody = await postProcess(draftBody, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
+        finalBody = await postProcess(normalizedDraft, finalAttempt.selectedEntries, input.db, finalAttempt.fullTextMap);
         console.log(`Step 2b post-processing complete: ${finalBody.length} chars`);
       } else {
         console.warn("Step 2b post-processing skipped: db not provided");

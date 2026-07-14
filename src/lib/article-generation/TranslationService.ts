@@ -266,6 +266,7 @@ export class TranslationService implements ITranslationService {
       "TRANSLATE EVERY HEADING (CRITICAL): every `## ...` heading's TEXT must be translated into English, not just the content beneath it. Do NOT leave any heading in Japanese. Example: `## 仕組みの詳細` MUST become something like `## How It Works`, never stay as `## 仕組みの詳細`. The last section heading `## まとめ` MUST become exactly `## Summary`.\n" +
       "Preserve all Markdown formatting (heading levels, lists, code blocks, links, bold, etc.) and the paragraph/section structure exactly — only the language changes, not the structure.\n" +
       "Keep technical terms, API names, model names, URLs, and code snippets as-is.\n" +
+      "Maintain the same paragraph structure and the same number of sections.\n" +
       "Output only the translated Markdown, nothing else.";
 
     const bodyResponse = await this.ai.run(TRANSLATION_MODEL, {
@@ -285,7 +286,7 @@ export class TranslationService implements ITranslationService {
     // The translation pipeline has no D1 access and therefore never runs
     // PostProcessor.postProcess, so malformed citation syntax carried over from the
     // Japanese source (or introduced by translation) would otherwise ship unrepaired.
-    const translatedBody = this.citationFormatNormalizer.normalize(rawTranslatedBody);
+    const translatedBody = this.citationFormatNormalizer.normalize(rawTranslatedBody, "en");
 
     console.log(`Step T2 body translated: ${translatedBody.length} chars`);
 

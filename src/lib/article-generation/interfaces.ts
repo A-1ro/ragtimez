@@ -96,17 +96,22 @@ export interface IFactualIntegrityValidator {
 }
 
 /**
- * Repairs a distinct malformed citation artifact the draft LLM occasionally emits:
- * a bare URL immediately followed by a parenthesized second URL instead of proper
- * `[title](url)` Markdown link syntax, e.g. `（出典: https://a/b(https://a/)）`. This
- * shape defeats every downstream regex that expects either a Markdown link or a
- * matching full-width closing paren (citation stripping, Summary-citation removal,
- * cited-source detection for frontmatter), so it must be normalized to a real
- * Markdown link before those passes run. Runs as an additive pass before
- * PostProcessor.postProcess and does not alter any existing post-processing behavior.
+ * Rewrites malformed citation markers — e.g. a bare URL immediately followed
+ * by a second, unbracketed parenthesized URL such as
+ * `（出典: https://a.com/page(https://a.com/)）` — into the canonical
+ * `（出典: [title](url)）` / `(Source: [title](url))` Markdown-link form.
+ *
+ * PostProcessor.stripFabricatedCitations, PostProcessor.removeSummaryCitations,
+ * and sourceMetadata.filterSourcesByCited all require a `[text](url)` link to
+ * detect and validate a citation. When the draft LLM emits a bare-URL citation
+ * instead, those existing safety nets silently pass it through unexamined —
+ * so a fabricated or off-topic URL can survive into ## Summary / frontmatter
+ * sources undetected. This runs as an additive pass BEFORE PostProcessor.postProcess
+ * so those existing checks keep working unmodified; citations that are already
+ * well-formed are left untouched.
  */
 export interface ICitationFormatNormalizer {
-  normalize(body: string): string;
+  normalize(body: string, lang: "ja" | "en"): string;
 }
 
 /**
