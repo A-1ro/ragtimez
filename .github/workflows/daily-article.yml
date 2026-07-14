@@ -61,10 +61,19 @@ jobs:
           ARTICLE_DATE: ${{ inputs.date }}
           FORCE_FLAG: ${{ inputs.force }}
         run: |
-          EXTRA_ARGS=()
-          if [ -n "$ARTICLE_DATE" ]; then
-            EXTRA_ARGS+=(--date "$ARTICLE_DATE")
+          # On scheduled runs, inputs.date is unset (schedule triggers have no
+          # inputs), so ARTICLE_DATE is empty here. generate-article.ts then
+          # defaults to "today UTC" — but the cron fires at 21:00 UTC, which is
+          # already 06:00 JST the next day, and the commit step below always
+          # stamps the commit message with the JST date. Without this fallback,
+          # every scheduled article was dated one calendar day earlier (UTC)
+          # than the JST date in its own commit message. Default explicitly to
+          # JST "today" so the article date matches the commit and the blog's
+          # documented 06:00 JST daily cadence.
+          if [ -z "$ARTICLE_DATE" ]; then
+            ARTICLE_DATE=$(TZ=Asia/Tokyo date +%Y-%m-%d)
           fi
+          EXTRA_ARGS=(--date "$ARTICLE_DATE")
           # FORCE_FLAG is empty on scheduled runs (inputs.force is unset); treated as false intentionally
           if [ "$FORCE_FLAG" = "true" ]; then
             EXTRA_ARGS+=(--force)
