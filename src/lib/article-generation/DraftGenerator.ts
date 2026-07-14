@@ -3,6 +3,10 @@ import type { ILlmClient } from "../llm/interfaces";
 
 const ANTHROPIC_DRAFT_MODEL = "claude-sonnet-4-20250514" as const;
 const WORKERS_AI_DRAFT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8" as const;
+// Japanese output consumes noticeably more tokens per character than English under
+// these models' tokenizers. 3072 was observed to truncate a ~1700-character ja article
+// mid-sentence in its final citation, so the ceiling is raised with headroom to spare.
+const DRAFT_MAX_TOKENS = 4096;
 
 export class DraftGenerator implements IDraftGenerator {
   constructor(
@@ -180,7 +184,7 @@ export class DraftGenerator implements IDraftGenerator {
           model: ANTHROPIC_DRAFT_MODEL,
           system,
           user: input.contextBlock,
-          maxTokens: 3072,
+          maxTokens: DRAFT_MAX_TOKENS,
           temperature: 0.4,
         });
         console.log(`Step 2a draft generated via Anthropic API: ${draft.length} chars`);
@@ -196,7 +200,7 @@ export class DraftGenerator implements IDraftGenerator {
       model: WORKERS_AI_DRAFT_MODEL,
       system,
       user: input.contextBlock,
-      maxTokens: 3072,
+      maxTokens: DRAFT_MAX_TOKENS,
       temperature: 0.4,
     });
     console.log(`Step 2a draft generated via CF Workers AI (fallback): ${fallbackDraft.length} chars`);

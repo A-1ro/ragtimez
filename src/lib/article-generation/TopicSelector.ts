@@ -2,9 +2,10 @@ import {
   MAX_TITLE_LENGTH,
   PAST_ARTICLES_LOOKBACK_DAYS,
 } from "./constants";
-import type { ITopicSelector } from "./interfaces";
+import type { IEntryRelevanceFilter, ITopicSelector } from "./interfaces";
 import { sanitizeExternalContent } from "./textUtils";
 import type { RssEntry } from "./types";
+import { VendorConsistencyFilter } from "./VendorConsistencyFilter";
 import type { ILlmClient } from "../llm/interfaces";
 
 const TOPIC_SELECTION_MODEL = "@cf/meta/llama-3.3-70b-instruct-fp8-fast" as const;
@@ -25,7 +26,10 @@ export interface TopicSelection {
 }
 
 export class TopicSelector implements ITopicSelector {
-  constructor(private readonly llmClient: ILlmClient) {}
+  constructor(
+    private readonly llmClient: ILlmClient,
+    private readonly relevanceFilter: IEntryRelevanceFilter = new VendorConsistencyFilter(),
+  ) {}
 
   async select(input: {
     entries: RssEntry[];
@@ -144,18 +148,33 @@ export class TopicSelector implements ITopicSelector {
           )
         : { entries: selectedEntries, keyNewFacts: topicSelection.keyNewFacts };
 
-    // Third-pass: programmatic vendor-domain filter.
-    // When the LLM audit fails to exclude entries from a different company's domain
-    // (e.g., keeping an openai.com entry for an Amazon Bedrock topic), this step
-    // removes them deterministically without relying on LLM instruction-following.
-    const vendorFiltered = this.filterEntriesByTopicVendor(
+    // Third-pass: programmatic vendor filters, applied in sequence.
+    // 1) Topic-driven domain filter: when the topic string names a recognized vendor
+    //    (e.g., "Amazon Bedrock Ops Alert"), drop entries from other vendors' domains.
+    // 2) Anchor-driven consistency filter: treat the first (highest-relevance) entry as
+    //    the topic anchor and drop entries from a different vendor, catching cross-vendor
+    //    leakage even when the topic string names no recognized vendor.
+    // Both are deterministic safety nets against the LLM audit's probabilistic
+    // instruction-following.
+    const topicVendorFiltered = this.filterEntriesByTopicVendor(
       topicSelection.topic,
       audited.entries,
     );
+    const vendorFiltered = this.relevanceFilter.filter(topicVendorFiltered);
+    if (vendorFiltered.droppedDomains.length > 0) {
+      console.warn(
+        `ベンダー一貫性フィルタで除外（LLM監査をすり抜けたクロスベンダーのエントリ）: ${vendorFiltered.droppedDomains.join(", ")}`,
+      );
+    }
+    // Entries dropped here were not caught by the LLM's own fact audit, so any
+    // keyNewFacts extracted from them can no longer be attributed to a surviving
+    // [Source] block — drop the whole list rather than risk an unsourced MANDATORY fact.
+    const keyNewFacts =
+      vendorFiltered.entries.length < audited.entries.length ? [] : audited.keyNewFacts;
 
     return {
-      topicSelection: { ...topicSelection, keyNewFacts: audited.keyNewFacts },
-      selectedEntries: vendorFiltered,
+      topicSelection: { ...topicSelection, keyNewFacts },
+      selectedEntries: vendorFiltered.entries,
     };
   }
 
