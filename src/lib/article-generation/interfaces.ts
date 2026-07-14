@@ -139,3 +139,23 @@ export interface IHeadingStructureValidator {
 export interface ICitationPlacementNormalizer {
   normalize(body: string, lang: "ja" | "en"): string;
 }
+
+export interface SectionRedundancyReport {
+  totalSections: number;
+  duplicatePairs: Array<{
+    sectionA: string;
+    sectionB: string;
+    sentenceA: string;
+    sentenceB: string;
+    similarity: number;
+  }>;
+}
+
+/**
+ * Detects near-duplicate sentences repeated across non-summary ## sections.
+ * Observability only — mirrors ICitationIntegrityChecker: does not alter the
+ * article body, gate publication, or change control flow.
+ */
+export interface ISectionRedundancyChecker {
+  analyze(body: string, lang: "ja" | "en"): SectionRedundancyReport;
+}

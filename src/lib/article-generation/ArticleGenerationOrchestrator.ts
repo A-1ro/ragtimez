@@ -3,6 +3,7 @@ import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
 import { CitationFormatNormalizer } from "./CitationFormatNormalizer";
 import { CitationPlacementNormalizer } from "./CitationPlacementNormalizer";
 import { HeadingStructureValidator } from "./HeadingStructureValidator";
+import { SectionRedundancyChecker } from "./SectionRedundancyChecker";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
@@ -14,6 +15,7 @@ import type {
   IHeadingStructureValidator,
   IMetadataGenerator,
   IResearchEnricher,
+  ISectionRedundancyChecker,
   SearchUsageBudget,
   ITopicSelector,
 } from "./interfaces";
@@ -35,6 +37,7 @@ export class ArticleGenerationOrchestrator {
     private readonly citationFormatNormalizer: ICitationFormatNormalizer = new CitationFormatNormalizer(),
     headingStructureValidator?: IHeadingStructureValidator,
     private readonly citationPlacementNormalizer: ICitationPlacementNormalizer = new CitationPlacementNormalizer(),
+    private readonly sectionRedundancyChecker: ISectionRedundancyChecker = new SectionRedundancyChecker(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
     this.headingStructureValidator = headingStructureValidator ?? new HeadingStructureValidator();
@@ -259,11 +262,25 @@ export class ArticleGenerationOrchestrator {
       );
     }
 
+    // Observability only: flag near-duplicate sentences repeated across sections.
+    // The draft-generation prompt already forbids this, but nothing previously verified
+    // compliance. Does not alter finalBody.
+    const redundancyReport = this.sectionRedundancyChecker.analyze(finalBody, input.lang);
+    if (redundancyReport.duplicatePairs.length > 0) {
+      for (const pair of redundancyReport.duplicatePairs) {
+        console.warn(
+          `セクション間重複検出（類似度=${pair.similarity.toFixed(2)}）: ` +
+            `"${pair.sectionA}" ↔ "${pair.sectionB}" — "${pair.sentenceA}" / "${pair.sentenceB}" ` +
+            `（トピック: "${finalAttempt.topicSelection.topic}"）`,
+        );
+      }
+    }
+
     // Step 2b-3: reposition section-end citations that the model placed right below the
     // heading instead of at the section end, and collapse citations to the same URL
     // repeated across 3+ sections into the prompt's documented "see above" abbreviation.
-    // Purely structural — runs after the observability check above so citationReport still
-    // reflects the model's raw, unmodified output.
+    // Purely structural — runs after the observability checks above so citationReport and
+    // redundancyReport still reflect the model's raw, unmodified output.
     finalBody = this.citationPlacementNormalizer.normalize(finalBody, input.lang);
 
     // Step 2c: generate metadata from the final body to ensure title matches content
