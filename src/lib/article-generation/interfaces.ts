@@ -124,3 +124,18 @@ export interface ICitationFormatNormalizer {
 export interface IHeadingStructureValidator {
   validate(body: string): string;
 }
+
+/**
+ * Deterministically enforces two DraftGenerator citation rules that the
+ * generation prompt already states but the model does not reliably follow:
+ *  1. The section-end citation must appear at the END of a section, not
+ *     immediately below the heading.
+ *  2. When the same source URL is cited by 3+ non-summary sections, the
+ *     2nd and later occurrences must be abbreviated to a "see above" form
+ *     instead of repeating the full citation.
+ * Purely structural — does not judge or alter factual content, and never
+ * touches the ## まとめ / ## Summary section.
+ */
+export interface ICitationPlacementNormalizer {
+  normalize(body: string, lang: "ja" | "en"): string;
+}

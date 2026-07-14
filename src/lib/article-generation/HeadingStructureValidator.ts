@@ -1,7 +1,7 @@
 import type { IHeadingStructureValidator } from "./interfaces";
 
 /**
- * Flattens "### " sub-headings into top-level "## " sections.
+ * Flattens "### " (and deeper, up to "######") sub-headings into top-level "## " sections.
  *
  * DraftGenerator's prompt explicitly forbids nesting ### sub-sections under a single
  * ## wrapper section (HEADING LEVEL RULE, reinforced by self-review CHECK 5), but the
@@ -22,7 +22,7 @@ export class HeadingStructureValidator implements IHeadingStructureValidator {
     const result = segments
       .map((segment, i) => {
         if (i % 2 === 1) return segment;
-        return segment.replace(/^###\s+/gm, () => {
+        return segment.replace(/^#{3,6}\s+/gm, () => {
           promoted++;
           return "## ";
         });

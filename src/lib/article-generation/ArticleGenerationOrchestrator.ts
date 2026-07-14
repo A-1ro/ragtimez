@@ -1,12 +1,14 @@
 import { FactualIntegrityValidator } from "./FactualIntegrityValidator";
 import { CitationIntegrityChecker } from "./CitationIntegrityChecker";
 import { CitationFormatNormalizer } from "./CitationFormatNormalizer";
+import { CitationPlacementNormalizer } from "./CitationPlacementNormalizer";
 import { HeadingStructureValidator } from "./HeadingStructureValidator";
 import { postProcess } from "./PostProcessor";
 import { SOURCE_QUALITY_MAX_RETRIES, SOURCE_QUALITY_THRESHOLD } from "./constants";
 import type {
   ICitationFormatNormalizer,
   ICitationIntegrityChecker,
+  ICitationPlacementNormalizer,
   IDraftGenerator,
   IFactualIntegrityValidator,
   IHeadingStructureValidator,
@@ -32,6 +34,7 @@ export class ArticleGenerationOrchestrator {
     private readonly citationIntegrityChecker: ICitationIntegrityChecker = new CitationIntegrityChecker(),
     private readonly citationFormatNormalizer: ICitationFormatNormalizer = new CitationFormatNormalizer(),
     headingStructureValidator?: IHeadingStructureValidator,
+    private readonly citationPlacementNormalizer: ICitationPlacementNormalizer = new CitationPlacementNormalizer(),
   ) {
     this.factualIntegrityValidator = factualIntegrityValidator ?? new FactualIntegrityValidator();
     this.headingStructureValidator = headingStructureValidator ?? new HeadingStructureValidator();
@@ -235,13 +238,14 @@ export class ArticleGenerationOrchestrator {
       );
     }
 
-    // Step 2b-2: repair structural Markdown artifacts (e.g. nested link hrefs)
+    // Step 2b-1: repair structural Markdown artifacts (e.g. nested link hrefs)
     // that survive post-processing. Additive pass, independent of postProcess.
     finalBody = this.factualIntegrityValidator.validate(finalBody);
 
-    // Step 2b-3: flatten any ### sub-headings the model nested under a single
-    // ## wrapper despite the flat-heading rule. Additive pass, independent of
-    // postProcess and factualIntegrityValidator.
+    // Step 2b-2: promote any ### (or deeper) headings to ##. The draft prompt forbids
+    // ### anywhere, but when the model nests sub-sections under one ## wrapper anyway,
+    // every downstream check below splits on "## " boundaries and silently treats the
+    // whole nested block as a single section — this repairs that before they run.
     finalBody = this.headingStructureValidator.validate(finalBody);
 
     // Observability only: flag sections whose citation was stripped as fabricated (or was
@@ -254,6 +258,13 @@ export class ArticleGenerationOrchestrator {
           `（トピック: "${finalAttempt.topicSelection.topic}"）。対象セクション: ${citationReport.unsourcedSectionTitles.join(" / ")}`,
       );
     }
+
+    // Step 2b-3: reposition section-end citations that the model placed right below the
+    // heading instead of at the section end, and collapse citations to the same URL
+    // repeated across 3+ sections into the prompt's documented "see above" abbreviation.
+    // Purely structural — runs after the observability check above so citationReport still
+    // reflects the model's raw, unmodified output.
+    finalBody = this.citationPlacementNormalizer.normalize(finalBody, input.lang);
 
     // Step 2c: generate metadata from the final body to ensure title matches content
     const metadata = await this.metadataGenerator.generate({
