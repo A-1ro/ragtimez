@@ -94,3 +94,17 @@ export interface ITranslationService {
 export interface IFactualIntegrityValidator {
   validate(body: string): string;
 }
+
+/**
+ * Repairs a distinct malformed citation artifact the draft LLM occasionally emits:
+ * a bare URL immediately followed by a parenthesized second URL instead of proper
+ * `[title](url)` Markdown link syntax, e.g. `（出典: https://a/b(https://a/)）`. This
+ * shape defeats every downstream regex that expects either a Markdown link or a
+ * matching full-width closing paren (citation stripping, Summary-citation removal,
+ * cited-source detection for frontmatter), so it must be normalized to a real
+ * Markdown link before those passes run. Runs as an additive pass before
+ * PostProcessor.postProcess and does not alter any existing post-processing behavior.
+ */
+export interface ICitationFormatNormalizer {
+  normalize(body: string): string;
+}

@@ -1,5 +1,6 @@
 import { getCollection } from "astro:content";
-import type { ITranslationService } from "./interfaces";
+import { CitationFormatNormalizer } from "./CitationFormatNormalizer";
+import type { ICitationFormatNormalizer, ITranslationService } from "./interfaces";
 import { stripOuterMarkdownFence } from "./textUtils";
 import type { ArticleSource, RssEntry } from "./types";
 import { extractText } from "../llm/extractText";
@@ -29,6 +30,7 @@ export class TranslationService implements ITranslationService {
     private readonly ai: {
       run(model: string, options: unknown): Promise<unknown>;
     },
+    private readonly citationFormatNormalizer: ICitationFormatNormalizer = new CitationFormatNormalizer(),
   ) {}
 
   parseArticleMarkdown(raw: string): TranslationSource | null {
@@ -261,10 +263,9 @@ export class TranslationService implements ITranslationService {
     const bodySystemPrompt =
       "You are a professional translator specializing in technical content.\n" +
       "Translate the following Japanese Markdown article to English.\n" +
-      "Preserve all Markdown formatting (headings, lists, code blocks, links, bold, etc.) exactly.\n" +
+      "TRANSLATE EVERY HEADING (CRITICAL): every `## ...` heading's TEXT must be translated into English, not just the content beneath it. Do NOT leave any heading in Japanese. Example: `## 仕組みの詳細` MUST become something like `## How It Works`, never stay as `## 仕組みの詳細`. The last section heading `## まとめ` MUST become exactly `## Summary`.\n" +
+      "Preserve all Markdown formatting (heading levels, lists, code blocks, links, bold, etc.) and the paragraph/section structure exactly — only the language changes, not the structure.\n" +
       "Keep technical terms, API names, model names, URLs, and code snippets as-is.\n" +
-      "Maintain the same paragraph structure and section headings.\n" +
-      "The last section ## まとめ should be translated as ## Summary.\n" +
       "Output only the translated Markdown, nothing else.";
 
     const bodyResponse = await this.ai.run(TRANSLATION_MODEL, {
@@ -276,10 +277,15 @@ export class TranslationService implements ITranslationService {
       temperature: 0.3,
     });
 
-    const translatedBody = stripOuterMarkdownFence(extractText(bodyResponse));
-    if (!translatedBody) {
+    const rawTranslatedBody = stripOuterMarkdownFence(extractText(bodyResponse));
+    if (!rawTranslatedBody) {
       throw new Error("Translation returned empty body");
     }
+
+    // The translation pipeline has no D1 access and therefore never runs
+    // PostProcessor.postProcess, so malformed citation syntax carried over from the
+    // Japanese source (or introduced by translation) would otherwise ship unrepaired.
+    const translatedBody = this.citationFormatNormalizer.normalize(rawTranslatedBody);
 
     console.log(`Step T2 body translated: ${translatedBody.length} chars`);
 
