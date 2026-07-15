@@ -259,7 +259,9 @@ export const POST: APIRoute = async ({ request }) => {
         new MetadataGenerator(workersAiClient),
         new DraftGenerator(
           workersAiClient,
-          env.ANTHROPIC_API_KEY ? new AnthropicLlmClient(env.ANTHROPIC_API_KEY) : undefined,
+          env.ANTHROPIC_API_KEY
+            ? new AnthropicLlmClient(env.ANTHROPIC_API_KEY, env.ANTHROPIC_BASE_URL, env.ANTHROPIC_GATEWAY_TOKEN)
+            : undefined,
         ),
       );
       llmResult = await orchestrator.generate({
