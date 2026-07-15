@@ -118,6 +118,8 @@ declare namespace Cloudflare {
      * Set via wrangler.toml [vars] (not a secret — contains no credentials).
      */
     ANTHROPIC_BASE_URL?: string;
+  /** Cloudflare AI Gateway auth token (cf-aig-authorization). Worker Secret — never commit. */
+  ANTHROPIC_GATEWAY_TOKEN?: string;
   }
 }
 

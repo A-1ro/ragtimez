@@ -260,7 +260,7 @@ export const POST: APIRoute = async ({ request }) => {
         new DraftGenerator(
           workersAiClient,
           env.ANTHROPIC_API_KEY
-            ? new AnthropicLlmClient(env.ANTHROPIC_API_KEY, env.ANTHROPIC_BASE_URL)
+            ? new AnthropicLlmClient(env.ANTHROPIC_API_KEY, env.ANTHROPIC_BASE_URL, env.ANTHROPIC_GATEWAY_TOKEN)
             : undefined,
         ),
       );
