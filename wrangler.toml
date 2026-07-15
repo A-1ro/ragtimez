@@ -5,6 +5,10 @@ compatibility_flags = ["nodejs_compat"]
 
 [vars]
 SITE_URL = "https://ragtimez.com"
+# Anthropic呼び出しをCloudflare AI Gateway経由にする（キャッシュ/レート制限/ログ）。
+# ゲートウェイ「ragtimez」をダッシュボードで作成したら下の行を有効化すること。
+# 未設定時は https://api.anthropic.com への直叩きにフォールバックする。
+# ANTHROPIC_BASE_URL = "https://gateway.ai.cloudflare.com/v1/a8931094a59bba2ad69d7cf9fa560401/ragtimez/anthropic"
 
 # Workers AI binding – used for LLM / embedding calls from Pages Functions
 [ai]

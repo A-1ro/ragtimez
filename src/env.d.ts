@@ -109,6 +109,15 @@ declare namespace Cloudflare {
      * Set via: wrangler pages secret put ANTHROPIC_API_KEY
      */
     ANTHROPIC_API_KEY?: string;
+    /**
+     * Optional base URL override for the Anthropic API.
+     * Point this at a Cloudflare AI Gateway endpoint to get caching, rate limiting
+     * and request logging for draft generation, e.g.:
+     *   https://gateway.ai.cloudflare.com/v1/<account_id>/ragtimez/anthropic
+     * When unset, requests go directly to https://api.anthropic.com.
+     * Set via wrangler.toml [vars] (not a secret — contains no credentials).
+     */
+    ANTHROPIC_BASE_URL?: string;
   }
 }
 
