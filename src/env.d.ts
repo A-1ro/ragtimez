@@ -101,7 +101,7 @@ declare namespace Cloudflare {
      */
     TAVILY_API_KEY?: string;
     /**
-     * Anthropic API key for high-quality draft generation using Claude (claude-sonnet-4).
+     * Anthropic API key for high-quality draft generation using Claude (claude-sonnet-5).
      * Used by /api/generate-article as the primary draft model; falls back to CF Workers AI when unset.
      * Optional — when unset, article generation uses CF Workers AI (DRAFT_FALLBACK_MODEL) directly.
      *

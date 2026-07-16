@@ -1,7 +1,8 @@
 import type { IDraftGenerator } from "./interfaces";
 import type { ILlmClient } from "../llm/interfaces";
 
-const ANTHROPIC_DRAFT_MODEL = "claude-sonnet-4-20250514" as const;
+// claude-sonnet-4-20250514 は2026年に廃止済み（Anthropic 404: not_found_error）。現行の Sonnet 5 に更新（2026-07-17）
+const ANTHROPIC_DRAFT_MODEL = "claude-sonnet-5" as const;
 const WORKERS_AI_DRAFT_MODEL = "@cf/qwen/qwen3-30b-a3b-fp8" as const;
 // Japanese output consumes noticeably more tokens per character than English under
 // these models' tokenizers. 3072 was observed to truncate a ~1700-character ja article
