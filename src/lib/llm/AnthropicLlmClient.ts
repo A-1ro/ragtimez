@@ -42,7 +42,10 @@ export class AnthropicLlmClient implements ILlmClient {
         max_tokens: request.maxTokens,
         messages: [{ role: "user", content: request.user }],
         system: request.system,
-        temperature: request.temperature ?? 0.3,
+        // Claude 5 世代（claude-sonnet-5 等）は temperature が deprecated で 400 を返すため送らない
+        ...(/^claude-[a-z]+-5/.test(request.model)
+          ? {}
+          : { temperature: request.temperature ?? 0.3 }),
       }),
     });
 
