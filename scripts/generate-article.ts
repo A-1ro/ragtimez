@@ -247,10 +247,20 @@ console.log(`  Sources    : ${article.metadata.sources.length}`);
 // every Anthropic call failed and the article kept publishing via the fallback anyway).
 // `::warning::` is a GitHub Actions log annotation — it shows up as a yellow warning on
 // the workflow run summary page even though the step itself still exits 0.
+//
+// GitHub Actions parses `%`, `\r`, `\n` inside workflow command data, so a multi-line
+// fallbackReason (e.g. an API error dump) must be escaped or it truncates/breaks the
+// annotation. See: https://docs.github.com/actions/using-workflows/workflow-commands-for-github-actions
+function escapeWorkflowCommandData(value: string): string {
+  return value.replace(/%/g, "%25").replace(/\r/g, "%0D").replace(/\n/g, "%0A");
+}
+
 if (article.usedFallback) {
   const reasonSuffix = article.fallbackReason ? `: ${article.fallbackReason}` : "";
   console.log(
-    `::warning title=ragtimez fallback used::Anthropic draft generation failed, article ${article.filename} was generated via CF Workers AI fallback (lower quality)${reasonSuffix}`,
+    `::warning title=ragtimez fallback used::${escapeWorkflowCommandData(
+      `Anthropic draft generation failed or unavailable, article ${article.filename} was generated via CF Workers AI fallback (lower quality)${reasonSuffix}`,
+    )}`,
   );
   const summaryFile = process.env.GITHUB_STEP_SUMMARY;
   if (summaryFile) {
@@ -258,7 +268,7 @@ if (article.usedFallback) {
       const { appendFileSync } = await import("node:fs");
       appendFileSync(
         summaryFile,
-        `\n⚠️ **${article.filename}**: Anthropic draft generation failed, used CF Workers AI fallback${reasonSuffix ? ` (${article.fallbackReason})` : ""}.\n`,
+        `\n⚠️ **${article.filename}**: Anthropic draft generation failed or unavailable, used CF Workers AI fallback${reasonSuffix ? ` (${article.fallbackReason})` : ""}.\n`,
       );
     } catch {
       // best-effort only
