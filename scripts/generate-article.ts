@@ -130,6 +130,8 @@ interface GeneratedArticle {
   filename: string;
   content: string;
   metadata: ArticleMetadata;
+  usedFallback?: boolean;
+  fallbackReason?: string;
 }
 
 const requestBody: Record<string, unknown> = { date: articleDate, lang: langArg };
@@ -239,3 +241,27 @@ console.log(`  Title      : ${article.metadata.title}`);
 console.log(`  Trust level: ${article.metadata.trustLevel}`);
 console.log(`  Tags       : ${article.metadata.tags.join(", ")}`);
 console.log(`  Sources    : ${article.metadata.sources.length}`);
+
+// Surface a silent Anthropic→Workers AI fallback loudly instead of letting a quality
+// regression go unnoticed for weeks (this happened from 2026-07-15 through 2026-07-18:
+// every Anthropic call failed and the article kept publishing via the fallback anyway).
+// `::warning::` is a GitHub Actions log annotation — it shows up as a yellow warning on
+// the workflow run summary page even though the step itself still exits 0.
+if (article.usedFallback) {
+  const reasonSuffix = article.fallbackReason ? `: ${article.fallbackReason}` : "";
+  console.log(
+    `::warning title=ragtimez fallback used::Anthropic draft generation failed, article ${article.filename} was generated via CF Workers AI fallback (lower quality)${reasonSuffix}`,
+  );
+  const summaryFile = process.env.GITHUB_STEP_SUMMARY;
+  if (summaryFile) {
+    try {
+      const { appendFileSync } = await import("node:fs");
+      appendFileSync(
+        summaryFile,
+        `\n⚠️ **${article.filename}**: Anthropic draft generation failed, used CF Workers AI fallback${reasonSuffix ? ` (${article.fallbackReason})` : ""}.\n`,
+      );
+    } catch {
+      // best-effort only
+    }
+  }
+}

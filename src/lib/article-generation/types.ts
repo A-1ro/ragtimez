@@ -17,6 +17,10 @@ export interface GeneratedArticle {
     draft: boolean;
     lang: "ja" | "en";
   };
+  // Whether Anthropic (primary draft LLM) failed and Workers AI was used instead.
+  // Not part of article frontmatter — informational only, for CI/caller visibility.
+  usedFallback?: boolean;
+  fallbackReason?: string;
 }
 
 export interface RssEntry {

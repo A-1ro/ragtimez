@@ -56,12 +56,18 @@ export interface IMetadataGenerator {
   }): Promise<{ title: string; summary: string; tags: string[] }>;
 }
 
+export interface DraftResult {
+  text: string;
+  usedFallback: boolean;
+  fallbackReason?: string;
+}
+
 export interface IDraftGenerator {
   generate(input: {
     contextBlock: string;
     lang: "ja" | "en";
     hasFullText: boolean;
-  }): Promise<string>;
+  }): Promise<DraftResult>;
 }
 
 export interface CitationIntegrityReport {

@@ -43,9 +43,13 @@ export class MetadataGenerator implements IMetadataGenerator {
           '- "tags": array of 3-5 specific English keywords (model names, API names, company names, specific technologies) that appear in the article.\n' +
           "Output only the JSON object, no markdown fences.";
 
-    // Attempt up to 2 times: first with base system prompt, then with a stricter retry prompt
-    // if the generated title contains forbidden vague words.
-    for (let attempt = 0; attempt < 2; attempt++) {
+    // Attempt up to 3 times: first with base system prompt, then with a stricter retry prompt
+    // if the generated title contains forbidden vague words. A malformed/garbled LLM response
+    // (JSON parse failure with no recoverable title/summary via regex) also consumes a retry
+    // instead of throwing immediately — run 118 (2026-07-19) failed outright on the first such
+    // response with no second attempt, taking the whole daily run down with it.
+    let lastParseError: Error | null = null;
+    for (let attempt = 0; attempt < 3; attempt++) {
       const retryWarning =
         attempt > 0 && input.lang === "ja"
           ? "\n\n【再生成指示】前回生成したタイトルに禁止ワード（最新動向・まとめ・概要・動向・トレンドなど）が含まれていました。今回は必ず「DiScoFormerによる密度推定の統合」「OpenAI o3のコンテキスト拡張」のように技術名・製品名を明示した具体的なタイトルを生成してください。"
@@ -67,7 +71,7 @@ export class MetadataGenerator implements IMetadataGenerator {
         .replace(/\s*```$/i, "")
         .trim();
 
-      let meta: { title: string; summary: string; tags: string[] };
+      let meta: { title: string; summary: string; tags: string[] } | null = null;
       try {
         const parsed = JSON.parse(normalized);
         if (
@@ -87,22 +91,26 @@ export class MetadataGenerator implements IMetadataGenerator {
         const titleMatch = /"title"\s*:\s*"([^"]+)"/.exec(normalized);
         const summaryMatch = /"summary"\s*:\s*"([^"]+)"/.exec(normalized);
         const tagsMatch = /"tags"\s*:\s*\[([\s\S]*?)\]/.exec(normalized);
-        if (!titleMatch || !summaryMatch) {
-          throw new Error(`Metadata parse failed. Raw: ${normalized.slice(0, 300)}`);
+        if (titleMatch && summaryMatch) {
+          meta = {
+            title: titleMatch[1].trim().slice(0, 200),
+            summary: summaryMatch[1].replace(/,\s*$/, "").trim().slice(0, 500),
+            tags: tagsMatch
+              ? (tagsMatch[1].match(/"([^"]+)"/g) ?? [])
+                  .map((tag) => tag.replace(/"/g, "").slice(0, 50))
+                  .slice(0, 10)
+              : [],
+          };
         }
-        meta = {
-          title: titleMatch[1].trim().slice(0, 200),
-          summary: summaryMatch[1].replace(/,\s*$/, "").trim().slice(0, 500),
-          tags: tagsMatch
-            ? (tagsMatch[1].match(/"([^"]+)"/g) ?? [])
-                .map((tag) => tag.replace(/"/g, "").slice(0, 50))
-                .slice(0, 10)
-            : [],
-        };
       }
 
-      if (!meta.title || !meta.summary) {
-        throw new Error(`Metadata missing fields. Raw: ${normalized.slice(0, 300)}`);
+      if (!meta || !meta.title || !meta.summary) {
+        lastParseError = new Error(`Metadata parse failed. Raw: ${normalized.slice(0, 300)}`);
+        if (attempt < 2) {
+          console.warn(`メタデータのパースに失敗、再生成します（試行 ${attempt + 1}/3）: ${lastParseError.message}`);
+          continue;
+        }
+        throw lastParseError;
       }
 
       if (hasForbiddenTitle(meta.title, input.lang) && attempt === 0) {
@@ -117,7 +125,7 @@ export class MetadataGenerator implements IMetadataGenerator {
       return meta;
     }
 
-    // TypeScript requires a return here but the loop always returns above.
-    throw new Error("Metadata generation failed after retries");
+    // TypeScript requires a return here but the loop always returns/throws above.
+    throw lastParseError ?? new Error("Metadata generation failed after retries");
   }
 }
