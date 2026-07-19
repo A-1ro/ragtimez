@@ -59,6 +59,8 @@ export class ArticleGenerationOrchestrator {
     selectedTopic: string;
     selectedEntries: RssEntry[];
     allContextEntries: RssEntry[];
+    usedFallback: boolean;
+    fallbackReason?: string;
   }> {
     const rejectedTopics: string[] = [];
     let bestAttempt: {
@@ -211,11 +213,12 @@ export class ArticleGenerationOrchestrator {
     const contextBlock = `Today is ${input.date}.\n\n${topicDirective}${newFactsBlock}${context}`;
 
     // Step 2a: generate draft body first
-    const rawDraftBody = await this.draftGenerator.generate({
+    const draftResult = await this.draftGenerator.generate({
       contextBlock,
       lang: input.lang,
       hasFullText,
     });
+    const rawDraftBody = draftResult.text;
     if (!rawDraftBody) throw new Error("LLM returned empty draft body");
     console.log(`Step 2a draft complete: ${rawDraftBody.length} chars`);
 
@@ -300,6 +303,8 @@ export class ArticleGenerationOrchestrator {
       // entries stay out.
       selectedEntries: finalAttempt.topicEntries,
       allContextEntries: finalAttempt.selectedEntries,
+      usedFallback: draftResult.usedFallback,
+      fallbackReason: draftResult.fallbackReason,
     };
   }
 }

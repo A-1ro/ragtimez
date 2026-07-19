@@ -1,4 +1,4 @@
-import type { IDraftGenerator } from "./interfaces";
+import type { IDraftGenerator, DraftResult } from "./interfaces";
 import type { ILlmClient } from "../llm/interfaces";
 
 // claude-sonnet-4-20250514 は2026年に廃止済み（Anthropic 404: not_found_error）。現行の Sonnet 5 に更新（2026-07-17）
@@ -19,7 +19,7 @@ export class DraftGenerator implements IDraftGenerator {
     contextBlock: string;
     lang: "ja" | "en";
     hasFullText: boolean;
-  }): Promise<string> {
+  }): Promise<DraftResult> {
     const fullTextInstruction = input.hasFullText
       ? "- The context includes full article body text. Use specific details, version numbers, API signatures, and benchmarks from the source text. Include code examples ONLY if they appear verbatim in the source — do NOT reconstruct or infer code that is not explicitly present.\n"
       : "- The context contains only article summaries. Be explicit when you lack technical detail. Do NOT write code blocks, API signatures, or SDK class names — none of these can be verified from summaries alone.\n";
@@ -195,11 +195,22 @@ export class DraftGenerator implements IDraftGenerator {
           temperature: 0.4,
         });
         console.log(`Step 2a draft generated via Anthropic API: ${draft.length} chars`);
-        return draft;
+        return { text: draft, usedFallback: false };
       } catch (err) {
-        console.warn(
-          `Anthropic API failed, falling back to CF Workers AI: ${err instanceof Error ? err.message : String(err)}`,
-        );
+        const reason = err instanceof Error ? err.message : String(err);
+        // 2026-07 の教訓: このフォールバックは開設(7/15)以来ずっと発生していたが、
+        // 記事自体は生成され続けたため2ヶ月近くサイレントに気づかれなかった
+        // （task #29）。呼び出し元がCI/呼び出しログで検知できるよう理由を持ち帰る。
+        console.warn(`Anthropic API failed, falling back to CF Workers AI: ${reason}`);
+        const fallbackDraft = await this.fallbackClient.generateText({
+          model: WORKERS_AI_DRAFT_MODEL,
+          system,
+          user: input.contextBlock,
+          maxTokens: DRAFT_MAX_TOKENS,
+          temperature: 0.4,
+        });
+        console.log(`Step 2a draft generated via CF Workers AI (fallback): ${fallbackDraft.length} chars`);
+        return { text: fallbackDraft, usedFallback: true, fallbackReason: reason };
       }
     }
 
@@ -211,6 +222,6 @@ export class DraftGenerator implements IDraftGenerator {
       temperature: 0.4,
     });
     console.log(`Step 2a draft generated via CF Workers AI (fallback): ${fallbackDraft.length} chars`);
-    return fallbackDraft;
+    return { text: fallbackDraft, usedFallback: true, fallbackReason: "no primary (Anthropic) client configured" };
   }
 }

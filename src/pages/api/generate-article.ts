@@ -244,6 +244,8 @@ export const POST: APIRoute = async ({ request }) => {
     selectedTopic: string;
     selectedEntries: RssEntry[];
     allContextEntries?: RssEntry[];
+    usedFallback?: boolean;
+    fallbackReason?: string;
   };
   try {
     if (translationSource) {
@@ -321,6 +323,8 @@ export const POST: APIRoute = async ({ request }) => {
       draft: false,
       lang,
     },
+    usedFallback: llmResult.usedFallback ?? false,
+    fallbackReason: llmResult.fallbackReason,
   };
 
   return new Response(JSON.stringify(article), {
