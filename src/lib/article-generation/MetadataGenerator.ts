@@ -49,12 +49,18 @@ export class MetadataGenerator implements IMetadataGenerator {
     // instead of throwing immediately — run 118 (2026-07-19) failed outright on the first such
     // response with no second attempt, taking the whole daily run down with it.
     let lastParseError: Error | null = null;
+    // Why the previous attempt failed — decides which retry instruction to append.
+    let retryReason: "parse" | "forbidden" | null = null;
     for (let attempt = 0; attempt < 3; attempt++) {
       const retryWarning =
-        attempt > 0 && input.lang === "ja"
-          ? "\n\n【再生成指示】前回生成したタイトルに禁止ワード（最新動向・まとめ・概要・動向・トレンドなど）が含まれていました。今回は必ず「DiScoFormerによる密度推定の統合」「OpenAI o3のコンテキスト拡張」のように技術名・製品名を明示した具体的なタイトルを生成してください。"
-          : attempt > 0 && input.lang === "en"
-          ? "\n\nREGENERATION NOTE: Your previous title contained a forbidden vague word (latest/update/summary/overview/roundup). This time you MUST generate a specific title naming the exact technology or product, e.g. 'OpenAI o3 Context Window Expansion' not 'Latest AI Updates'."
+        retryReason === "parse"
+          ? input.lang === "ja"
+            ? "\n\n【再生成指示】前回の応答はJSONとしてパースできませんでした。マークダウンフェンスや説明文を付けず、有効なJSONオブジェクトのみを出力してください。"
+            : "\n\nREGENERATION NOTE: Your previous response could not be parsed as JSON. Output ONLY a valid JSON object with no markdown fences or surrounding text."
+          : retryReason === "forbidden"
+          ? input.lang === "ja"
+            ? "\n\n【再生成指示】前回生成したタイトルに禁止ワード（最新動向・まとめ・概要・動向・トレンドなど）が含まれていました。今回は必ず「DiScoFormerによる密度推定の統合」「OpenAI o3のコンテキスト拡張」のように技術名・製品名を明示した具体的なタイトルを生成してください。"
+            : "\n\nREGENERATION NOTE: Your previous title contained a forbidden vague word (latest/update/summary/overview/roundup). This time you MUST generate a specific title naming the exact technology or product, e.g. 'OpenAI o3 Context Window Expansion' not 'Latest AI Updates'."
           : "";
       const system = baseSystem + retryWarning;
 
@@ -108,17 +114,21 @@ export class MetadataGenerator implements IMetadataGenerator {
         lastParseError = new Error(`Metadata parse failed. Raw: ${normalized.slice(0, 300)}`);
         if (attempt < 2) {
           console.warn(`メタデータのパースに失敗、再生成します（試行 ${attempt + 1}/3）: ${lastParseError.message}`);
+          retryReason = "parse";
           continue;
         }
         throw lastParseError;
       }
 
-      if (hasForbiddenTitle(meta.title, input.lang) && attempt === 0) {
-        console.warn(`メタデータタイトルに禁止ワード検出、再生成します: "${meta.title}"`);
-        continue;
-      }
-
+      // Retry on forbidden-word titles until the last attempt. Note: `attempt === 0` here
+      // would skip the retry when the first attempt was consumed by a parse failure
+      // (parse fail → retry → forbidden title would get accepted without another try).
       if (hasForbiddenTitle(meta.title, input.lang)) {
+        if (attempt < 2) {
+          console.warn(`メタデータタイトルに禁止ワード検出、再生成します（試行 ${attempt + 1}/3）: "${meta.title}"`);
+          retryReason = "forbidden";
+          continue;
+        }
         console.warn(`再生成後もタイトルに禁止ワードが残存しました（そのまま使用）: "${meta.title}"`);
       }
 
