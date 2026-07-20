@@ -254,3 +254,61 @@ jobs:
 
           post_article "$JA_ARTICLE_FILE" "ja"
           post_article "$EN_ARTICLE_FILE" "en"
+
+  # 記事生成ジョブが失敗した時、hinata-portal のチャットへ直接通知する。
+  # スパム防止のため「2回連続失敗」を発火条件にする（直前の完了ランも failure だった時だけ通知）。
+  # 受け口: hinata-portal /api/hooks/ragtimez（Bearer RAGTIMEZ_HOOK_TOKEN）。
+  # 企画書: ai-workspace/plans/2026-07-20-ragtimez-portal-hook.md（タスク#44）
+  notify-hinata-on-failure:
+    needs: generate-and-commit
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      actions: read
+    steps:
+      - name: Notify hinata-portal on consecutive failure
+        env:
+          RAGTIMEZ_HOOK_TOKEN: ${{ secrets.RAGTIMEZ_HOOK_TOKEN }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          REF_NAME: ${{ github.ref_name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          if [ -z "$RAGTIMEZ_HOOK_TOKEN" ]; then
+            echo "RAGTIMEZ_HOOK_TOKEN not set; skipping notify."
+            exit 0
+          fi
+
+          # 直前の「完了済み」ラン（=このワークフローの1つ前）の結論を見る。
+          # 現在のランはまだ in_progress なので status=completed の一覧には出ない。
+          # 念のため run_id でも現在ランを除外する。前ランも failure なら2回連続とみなす。
+          # branch を現在の ref に絞り、別ブランチ（workflow_dispatch等）の失敗と混同しないようにする。
+          # concurrency(group: daily-article, cancel-in-progress:false)でランは直列化されるため、
+          # 同一ブランチの最新完了ラン=直前ランとみなせる。
+          PREV_CONCLUSION=$(curl -s -G \
+            -H "Authorization: Bearer $GH_TOKEN" \
+            -H "Accept: application/vnd.github+json" \
+            --data-urlencode "per_page=5" \
+            --data-urlencode "status=completed" \
+            --data-urlencode "exclude_pull_requests=true" \
+            --data-urlencode "branch=$REF_NAME" \
+            "$GITHUB_API_URL/repos/$GITHUB_REPOSITORY/actions/workflows/daily-article.yml/runs" \
+            | jq -r --arg rid "$GITHUB_RUN_ID" \
+              '[.workflow_runs[] | select((.id|tostring) != $rid)] | .[0].conclusion // "none"')
+          echo "Previous completed run conclusion: $PREV_CONCLUSION"
+
+          if [ "$PREV_CONCLUSION" != "failure" ]; then
+            echo "Not a consecutive failure (prev=$PREV_CONCLUSION). Skipping notify to avoid noise."
+            exit 0
+          fi
+
+          SUMMARY="Daily Article生成が2回連続で失敗しました"
+          PAYLOAD=$(jq -n \
+            --arg s "$SUMMARY" \
+            --arg u "$RUN_URL" \
+            '{kind:"eval_fail", summary:$s, detail:"daily-article.yml が直近2回連続で failure。GitHub Actionsのログを確認してください。", url:$u}')
+
+          curl -s -f -X POST "https://hinata-portal.a-1ro.dev/api/hooks/ragtimez" \
+            -H "Authorization: Bearer $RAGTIMEZ_HOOK_TOKEN" \
+            -H "content-type: application/json" \
+            -d "$PAYLOAD" \
+            --max-time 30 || echo "Notify to hinata-portal failed (non-fatal)."
